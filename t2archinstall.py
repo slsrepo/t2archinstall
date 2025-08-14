@@ -355,8 +355,8 @@ class T2ArchInstaller(App):
             return False
 
         # Apply the font
-        if self.run_command(f"setfont {font_path}", timeout=10):
-            return True
+        # if self.run_command(f"setfont {font_path}", timeout=10):
+            # return True
 
         return False
 
