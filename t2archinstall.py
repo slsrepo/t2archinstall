@@ -633,15 +633,15 @@ class T2ArchInstaller(App):
     def add_t2_repo_to_chroot(self):
         """Add the T2 repository to pacman inside the chroot environment."""
         repo_config = "[arch-mact2]\\nServer = https://github.com/NoaHimesaka1873/arch-mact2-mirror/releases/download/release\\nSigLevel = Never"
-        self.run_in_chroot(f"echo -e '{repo_config}' >> /mnt/etc/pacman.conf")
+        self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf")
         self.run_in_chroot("pacman -Sy")
         self.query_one("#console", RichLog).write("T2 repository (GitHub) added to chroot successfully!")
         self.query_one("#config_basic_btn").focus()
 
-    def add_t2_repo_to_chroot(self):
+    def add_t2_repo_mirror_to_chroot(self):
         """Add the T2 repository mirror to pacman inside the chroot environment."""
         repo_config = "[arch-mact2]\\nServer = https://mirror.funami.tech/arch-mact2/os/x86_64\\nSigLevel = Never"
-        self.run_in_chroot(f"echo -e '{repo_config}' >> /mnt/etc/pacman.conf")
+        self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf")
         self.run_in_chroot("pacman -Sy")
         self.query_one("#console", RichLog).write("T2 repository (YuruMirror) added to chroot successfully!")
         self.query_one("#config_basic_btn").focus()
@@ -656,11 +656,11 @@ class T2ArchInstaller(App):
         locales_to_enable = ["en_US.UTF-8"] + [loc for loc in self.locales_added if loc != "en_US.UTF-8"]
         lang = self.lang_selected or "en_US.UTF-8"
         for loc in locales_to_enable:
-            commands.append(f"\"echo '{loc} UTF-8' >> /etc/locale.gen\"")
+            commands.append(f"echo '{loc} UTF-8' >> /etc/locale.gen")
         commands += [
             "locale-gen",
-            f"\"echo 'LANG={lang}' > /etc/locale.conf\"",
-            f"\"echo 'LANGUAGE={lang}' >> /etc/locale.conf\"",
+            f"echo 'LANG={lang}' > /etc/locale.conf",
+            f"echo 'LANGUAGE={lang}' >> /etc/locale.conf",
         ]
 
         for cmd in commands:
