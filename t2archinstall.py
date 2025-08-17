@@ -22,6 +22,8 @@ Usage:
 import sys
 import subprocess
 import shlex
+import json
+import re
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
@@ -86,6 +88,7 @@ class T2ArchInstaller(App):
     def __init__(self):
         super().__init__()
         self.disk = ""
+        self.partition_mode = "partition_with_swap"
         self.root_partition = ""
         self.efi_partition = ""
         self.swap_partition = ""
@@ -123,8 +126,11 @@ class T2ArchInstaller(App):
                             yield RadioButton("ext4 with LVM", id="ext4_lvm", value=True)
                         yield Static("Partitioning will create:")
                         yield Static("• EFI partition (512MB)")
-                        yield Static("• Swap partition (4GB)")
+                        yield Static("• Swap partition (4GB, optional)")
                         yield Static("• Root partition (remaining)")
+                        with RadioSet(id="partition_mode"):
+                            yield RadioButton("Create partitions", id="partition_without_swap")
+                            yield RadioButton("Create partitions, with swap", id="partition_with_swap", value=True)
                         yield Static("", id="partition_info")
                         yield Button("Create Partitions", id="create_partitions_btn")
 
@@ -149,7 +155,8 @@ class T2ArchInstaller(App):
 
                     with TabPane("Setup", id="packages_tab"):
                         yield Static("Start the initial installation:")
-                        yield Button("Add the T2 Repository", id="add_repo_btn")
+                        yield Button("Add the T2 Repository (GitHub)", id="add_repo_btn")
+                        yield Button("Add the T2 Repository (YaruMirror)", id="add_repo_mirror_btn")
                         yield Static("Install the base system and T2 packages")
                         yield Button("Auto Install (in the app)", id="pacstrap_auto_btn")
                         yield Button("Manual Install (will exit the app)", id="pacstrap_manual_btn")
@@ -159,7 +166,8 @@ class T2ArchInstaller(App):
                     with TabPane("System", id="system_tab"):
                         yield Static("Configure the new system.")
                         yield Button("Generate fstab", id="fstab_btn")
-                        yield Button("Add T2 Repo to Chroot", id="chroot_repo_btn")
+                        yield Button("Add T2 Repository (GitHub) to Chroot", id="chroot_repo_btn")
+                        yield Button("Add T2 Repository (YaruMirror) to Chroot", id="chroot_repo_mirror_btn")
                         yield Button("Configure Modules & Locale", id="config_basic_btn")
                         yield Static("Hostname:")
                         yield Input(placeholder="Enter hostname", id="hostname_input")
@@ -177,6 +185,7 @@ class T2ArchInstaller(App):
                             yield RadioButton("systemd-boot", id="systemd_bootloader")
                         yield Button("Install Bootloader", id="install_bootloader_btn")
                         yield Button("Create Boot Icon", id="boot_icon_btn")
+                        yield Button("Install Plymouth for boot animation (Optional)", id="plymouth_btn")
 
                     with TabPane("Desktop", id="desktop_tab"):
                         yield Static("Create your user and install your preferred desktop environment.")
@@ -216,13 +225,11 @@ class T2ArchInstaller(App):
     def on_mount(self):
         """Initialize the application."""
         self.title = "T2 Arch Linux Installer"
-
-        self.set_smart_font()
-
+      
         console = self.query_one("#console", RichLog)
         console.write("T2 Arch Linux Installer Started")
         console.write("=" * 50)
-        console.write("Follow the steps using the arrow keys on the switcher above or by pressing the keyboard shortcuts listed below.\n")
+        console.write("Follow the steps using the Tab key, the arrow keys on the switcher above or by pressing the keyboard shortcuts listed below.\n")
         console.write("Please note that some commands might take a while to run. If anything goes wrong, or you would like to run any additional commands of your own, you can type them below to run them.\n")
         console.write("To begin, enter your disk path in the Start tab :)")
         console.write("=" * 50)
@@ -279,6 +286,8 @@ class T2ArchInstaller(App):
             self.filesystem_type = "btrfs" if "btrfs" in choice else "ext4"
         elif event.radio_set.id == "bootloader_choice":
             self.bootloader_type = "grub" if event.pressed.id == "grub_bootloader" else "systemd-boot"
+        elif event.radio_set.id == "partition_mode":
+            self.partition_mode = event.pressed.id
 
     @on(Button.Pressed)
     def on_button_pressed(self, event: Button.Pressed):
@@ -309,10 +318,12 @@ class T2ArchInstaller(App):
         elif button_id == "mount_partitions_btn": self.mount_partitions()
         elif button_id == "set_timezone_btn": self.set_timezone()
         elif button_id == "add_repo_btn": self.add_t2_repository()
+        elif button_id == "add_repo_mirror_btn": self.add_t2_repository_mirror()  
         elif button_id == "pacstrap_auto_btn": self.install_base_system_auto()
         elif button_id == "pacstrap_manual_btn": self.install_base_system_manual()
         elif button_id == "fstab_btn": self.generate_fstab()
         elif button_id == "chroot_repo_btn": self.add_t2_repo_to_chroot()
+        elif button_id == "chroot_repo_mirror_btn": self.add_t2_repo_mirror_to_chroot()
         elif button_id == "config_basic_btn": self.configure_basic_system()
         elif button_id == "set_hostname_btn": self.set_hostname()
         elif button_id == "set_root_password_btn": self.set_root_password()
@@ -322,6 +333,7 @@ class T2ArchInstaller(App):
             if self.bootloader_type == "grub": self.install_grub()
             else: self.install_systemd_boot()
         elif button_id == "boot_icon_btn": self.create_boot_icon()
+        elif button_id == "plymouth_btn": self.install_plymouth()  
         elif button_id == "create_user_btn": self.create_user_and_services()
         elif button_id == "no_de_btn":
             console.write("No desktop environment selected")
@@ -335,30 +347,6 @@ class T2ArchInstaller(App):
         elif button_id == "touchbar_btn": self.install_touchbar()
         elif button_id == "unmount_btn": self.unmount_system()
         elif button_id == "reboot_btn": self.reboot_system()
-
-    def set_smart_font(self) -> bool:
-        """
-        If the app is running on a HiDPI screen, set a larger console font (ter-132b).
-        Otherwise, leave the current console font unchanged.
-        Returns True if we changed the font, False if we did nothing or failed.
-        """
-        # Read framebuffer virtual size to detect HiDPI. Treat >= 3000x or >= 2000y as HiDPI.
-        hidpi = False
-        try:
-            with open("/sys/class/graphics/fb0/virtual_size") as f:
-                w, h = [int(x) for x in f.read().strip().split(",")]
-                hidpi = (w >= 3000 or h >= 2000)
-        except Exception:
-            return False
-
-        if not hidpi:
-            return False
-
-        # Apply the font
-        # if self.run_command(f"setfont {font_path}", timeout=10):
-            # return True
-
-        return False
 
     def cleanup_pacman_lock(self):
         """Clean up pacman lock file on errors."""
@@ -382,39 +370,131 @@ class T2ArchInstaller(App):
         if not self.disk:
             console.write("[ERROR] No disk specified")
             return
-        efi_part, swap_part, root_part_base = self.get_partition_names(self.disk)
-        root_part_final = root_part_base
-        base_commands = [
-                            f"parted -s {self.disk} mklabel gpt",
-                            f"parted -s {self.disk} mkpart ESP fat32 1MiB 513MiB",
-                            f"parted -s {self.disk} set 1 esp on",
-                            f"parted -s {self.disk} mkpart primary linux-swap 513MiB 4GiB"
-                        ]
-        if self.use_lvm:
-            commands = base_commands + [
-                                        f"parted -s {self.disk} mkpart primary ext4 4GiB 100%", f"mkfs.fat -F32 {efi_part}",
-                                        f"mkswap {swap_part}",
-                                        f"pvcreate {root_part_base}",
-                                        f"vgcreate vg0 {root_part_base}",
-                                        "lvcreate -l 100%FREE vg0 -n root",
-                                        f"mkfs.{self.filesystem_type} /dev/vg0/root"
-                                        ]
-            root_part_final = "/dev/vg0/root"
-        else:
-            commands = base_commands + [
-                                        f"parted -s {self.disk} mkpart primary {self.filesystem_type} 4GiB 100%",
-                                        f"mkfs.fat -F32 {efi_part}",
-                                        f"mkswap {swap_part}",
-                                        f"mkfs.{self.filesystem_type} {'-f' if self.filesystem_type == 'btrfs' else ''} {root_part_base}".strip()
-                                        ]
-        console.write(f"Creating partitions with {self.filesystem_type}{' + LVM' if self.use_lvm else ''}...")
-        for cmd in commands:
-            if not self.run_command(cmd):
+          
+        mode = self.partition_mode
+        include_swap = True
+        if mode == "partition_without_swap":
+            include_swap = False
+        swap_mib = 4096
+
+        def _parts():
+            out = subprocess.check_output(
+                ["lsblk", "-bJ", "-o", "NAME,KNAME,SIZE,START,PARTTYPE,FSTYPE", self.disk],
+                text=True
+            )
+            data = json.loads(out)
+            dev = next(d for d in data["blockdevices"]
+                    if ("/dev/"+d["name"]) == self.disk or d["kname"] == self.disk)
+            ch = dev.get("children") or []
+            parts = [{
+                "name": c["name"],
+                "kname": "/dev/"+c["name"],
+                "size": int(c.get("size") or 0),
+                "start": int(c.get("start") or 0),
+                "parttype": (c.get("parttype") or "").lower(),
+                "fstype": (c.get("fstype") or "").lower(),
+            } for c in ch]
+            parts.sort(key=lambda p: p["start"])
+            return parts
+
+        def _last_is_linux(p):
+            return p["parttype"] in ("0fc63daf-8483-4772-8e79-3d69d8477de4", "8300") or \
+                p["fstype"]   in ("ext4", "xfs", "btrfs", "f2fs")
+
+        existing = _parts()
+        auto_mode = "whole" if len(existing) == 0 else "add"
+
+        if auto_mode == "whole":
+            console.write("Creating partitions...")
+            lines = ["label: gpt",
+                    "size=1GiB, type=uefi"]
+            if include_swap:
+                lines.append(f"size={swap_mib}MiB, type=swap")
+            if self.use_lvm:
+                lines.append("type=E6D6D379-F507-44C2-A23C-238F2A3DF928")  # LVM GPT GUID type
+            else:
+                lines.append("type=linux")
+            script = "\n".join(lines) + "\n"
+
+            if not self.run_command(f"sfdisk --wipe always {self.disk} <<'EOF'\n{script}EOF"):
                 console.write("[ERROR] Partitioning failed.")
                 return
+
+        else:
+            console.write("Adding partitions at the end of the disk...")
+            append_lines = ["size=1GiB,type=uefi"]
+            if include_swap:
+                append_lines.append(f"size={swap_mib}MiB, type=swap")
+            if self.use_lvm:
+                append_lines.append("type=E6D6D379-F507-44C2-A23C-238F2A3DF928") # LVM GPT GUID type
+            else:
+                append_lines.append("type=linux")
+            script = "\n".join(append_lines) + "\n"
+
+            ok = self.run_command(
+                f"sfdisk --append {self.disk} <<'EOF'\n{script}EOF"
+            )
+
+            if not ok:
+                parts_before = _parts()
+                if not parts_before:
+                    console.write("[ERROR] No existing partitions; use Whole drive mode.")
+                    return
+                last = parts_before[-1]
+                if not _last_is_linux(last):
+                    console.write("[ERROR] Not enough free tail space and last partition is not Linux; refusing to delete.")
+                    return
+
+                # Extract numeric partition index from name (nvme0n1p7 -> 7)
+                m = re.search(r'(\d+)$', last["name"])
+                pnum = m.group(1)
+                # pnum = "".join(ch for ch in last["name"] if ch.isdigit())
+                if not self.run_command(f"sfdisk --delete {self.disk} {pnum}"):
+                    console.write("[ERROR] Failed deleting the last partition.")
+                    return
+
+                if not self.run_command(
+                    f"sfdisk --append {self.disk} <<'EOF'\n{script}EOF"
+                ):
+                    console.write("[ERROR] Appending partitions failed even after deleting the last Linux partition.")
+                    return
+
+        parts_after = _parts()
+        new_set = parts_after[-(3 if include_swap else 2):]
+        efi_part  = new_set[0]["kname"]
+        swap_part = new_set[1]["kname"] if include_swap else ""
+        root_base = new_set[-1]["kname"]
+
+        console.write(f"Creating filesystems with {self.filesystem_type}{' + LVM' if self.use_lvm else ''}...")
+
+        # EFI
+        if not self.run_command(f"mkfs.fat -F32 {efi_part}"):
+            console.write("[ERROR] mkfs.fat failed.")
+            return
+
+        # Swap (optional)
+        if swap_part:
+            if not self.run_command(f"mkswap {swap_part}"):
+                console.write("[ERROR] mkswap failed.")
+                return
+
+        # Root & LVM
+        if self.use_lvm:
+            if not self.run_command(f"pvcreate {root_base}"): return
+            if not self.run_command(f"vgcreate vg0 {root_base}"): return
+            if not self.run_command("lvcreate -l 100%FREE vg0 -n root"): return
+            root_final = "/dev/vg0/root"
+            if not self.run_command(f"mkfs.{self.filesystem_type} /dev/vg0/root"): return
+        else:
+            if self.filesystem_type == "btrfs":
+                if not self.run_command(f"mkfs.btrfs -f {root_base}"): return
+            else:
+                if not self.run_command(f"mkfs.{self.filesystem_type} {root_base}"): return
+            root_final = root_base
+
         console.write("Partitioning completed successfully!")
 
-        # Auto-fill partition paths and switch to mount tab
+        # Auto-fill partition paths and switch to the mount tab
         self.query_one("#root_input").value = root_part_final
         self.query_one("#efi_input").value = efi_part
         self.query_one("#swap_input").value = swap_part
@@ -427,8 +507,8 @@ class T2ArchInstaller(App):
         self.root_partition = self.query_one("#root_input").value.strip()
         self.efi_partition = self.query_one("#efi_input").value.strip()
         self.swap_partition = self.query_one("#swap_input").value.strip()
-        if not all([self.root_partition, self.efi_partition, self.swap_partition]):
-            console.write("[ERROR] Please specify all partitions")
+        if not all([self.root_partition, self.efi_partition]):
+            console.write("[ERROR] Please specify at least the Root and EFI partitions")
             return
         commands = [
                     f"mount {self.root_partition} /mnt",
@@ -461,6 +541,14 @@ class T2ArchInstaller(App):
     def add_t2_repository(self):
         """Add the T2 repository to pacman."""
         repo_config = "[arch-mact2]\\nServer = https://github.com/NoaHimesaka1873/arch-mact2-mirror/releases/download/release\\nSigLevel = Never"
+        self.run_command(f"echo -e '{repo_config}' >> /etc/pacman.conf")
+        self.run_command("pacman -Sy")
+        self.query_one("#console", RichLog).write("T2 repository added successfully!")
+        self.query_one("#pacstrap_auto_btn").focus()
+
+  def add_t2_repository_mirror(self):
+        """Add the T2 repository mirror to pacman."""
+        repo_config = "[arch-mact2]\\nServer = https://mirror.funami.tech/arch-mact2/os/x86_64\\nSigLevel = Never"
         self.run_command(f"echo -e '{repo_config}' >> /etc/pacman.conf")
         self.run_command("pacman -Sy")
         self.query_one("#console", RichLog).write("T2 repository added successfully!")
@@ -501,13 +589,20 @@ class T2ArchInstaller(App):
         repo_config = "[arch-mact2]\\nServer = https://github.com/NoaHimesaka1873/arch-mact2-mirror/releases/download/release\\nSigLevel = Never"
         self.run_in_chroot(f"echo -e '{repo_config}' >> /mnt/etc/pacman.conf")
         self.run_in_chroot("pacman -Sy")
-        self.query_one("#console", RichLog).write("T2 repository added to chroot successfully!")
+        self.query_one("#console", RichLog).write("T2 repository (GitHub) added to chroot successfully!")
+        self.query_one("#config_basic_btn").focus()
+      
+    def add_t2_repo_to_chroot(self):
+        """Add the T2 repository mirror to pacman inside the chroot environment."""
+        repo_config = "[arch-mact2]\\nServer = https://mirror.funami.tech/arch-mact2/os/x86_64\\nSigLevel = Never"
+        self.run_in_chroot(f"echo -e '{repo_config}' >> /mnt/etc/pacman.conf")
+        self.run_in_chroot("pacman -Sy")
+        self.query_one("#console", RichLog).write("T2 repository (YaruMirror) added to chroot successfully!")
         self.query_one("#config_basic_btn").focus()
 
     def configure_basic_system(self):
         """Configure T2 modules, locale, and time."""
         commands = [
-                    "\"echo 'apple-bce' > /etc/modules-load.d/t2.conf\"",
                     f"ln -sf /usr/share/zoneinfo/{self.timezone} /etc/localtime",
                     "hwclock --systohc",
                     "\"echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen\"",
@@ -561,7 +656,6 @@ class T2ArchInstaller(App):
     def build_initramfs(self):
         """Build the initial ramdisk."""
         console = self.query_one("#console", RichLog)
-        self.run_in_chroot("sed -i 's|MODULES=()|MODULES=(apple-bce)|' /etc/mkinitcpio.conf")
         # Add lvm2 hook if using LVM
         if self.use_lvm:
             self.run_in_chroot("sed -i 's|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block filesystems fsck)|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block lvm2 filesystems fsck)|' /etc/mkinitcpio.conf")
@@ -624,10 +718,28 @@ class T2ArchInstaller(App):
         )
         if self.run_in_chroot(icon_commands, timeout=180):
             console.write("Boot icon created successfully!")
+            self.query_one("#plymouth_btn").focus()
+        else:
+            console.write("[ERROR] Boot icon creation failed")
+
+    def install_plymouth(self):
+        """Install Plymouth for boot animation."""
+        console = self.query_one("#console", RichLog)
+        if not self.run_in_chroot("pacman -S --noconfirm plymouth", timeout=180):
+            console.write("[ERROR] Failed to install plymouth")
+            return
+        # Add lvm2 hook if using LVM
+        if self.use_lvm:
+            self.run_in_chroot("sed -i 's|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block lvm2 filesystems fsck)|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont plymouth block lvm2 filesystems fsck)|' /etc/mkinitcpio.conf")
+        else:
+            self.run_in_chroot("sed -i 's|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block filesystems fsck)|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont plymouth block filesystems fsck)|' /etc/mkinitcpio.conf")
+        console.write("Rebuilding initramfs to add Plymouth (this might take a while)...")
+        if self.run_in_chroot("mkinitcpio -P", timeout=600):
+            console.write("Plymouth installed and initramfs rebuilt successfully!")
             self.query_one("#left_panel").focus()
             self.query_one(TabbedContent).active = "desktop_tab"
         else:
-            console.write("[ERROR] Boot icon creation failed")
+            console.write("[ERROR] Plymouth initramfs build failed")
 
     def create_user_and_services(self):
         """Create the regular user and enable essential services."""
@@ -649,7 +761,6 @@ class T2ArchInstaller(App):
                     "'echo -e \"[device]\\nwifi.backend=iwd\" > /etc/NetworkManager/NetworkManager.conf'",
                     "systemctl enable iwd.service",
                     "systemctl enable bluetooth.service",
-                    "systemctl enable systemd-networkd.service",
                     "systemctl enable systemd-resolved.service",
                     "systemctl enable NetworkManager.service",
                     "systemctl enable t2fanrd.service"
