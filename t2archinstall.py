@@ -76,7 +76,7 @@ class T2ArchInstaller(App):
         ("1", "switch_tab(0)", "Start"),
         ("2", "switch_tab(1)", "Partition"),
         ("3", "switch_tab(2)", "Mount"),
-        ("4", "switch_tab(3)", "Time"),
+        ("4", "switch_tab(3)", "Locale"),
         ("5", "switch_tab(4)", "Setup"),
         ("6", "switch_tab(5)", "System"),
         ("7", "switch_tab(6)", "Bootloader"),
@@ -95,6 +95,8 @@ class T2ArchInstaller(App):
         self.use_lvm = True
         self.filesystem_type = "ext4"
         self.bootloader_type = "grub"
+        self.locales_added = []
+        self.lang_selected = "en_US.UTF-8"
         self.timezone = "UTC"
         self.username = ""
         self.tab_ids = [
@@ -146,17 +148,26 @@ class T2ArchInstaller(App):
                         yield Input(placeholder="e.g. /dev/nvme0n1p2 or /dev/sda2", id="swap_input")
                         yield Button("Mount Partitions", id="mount_partitions_btn")
 
-                    with TabPane("Time", id="time_tab"):
+                    with TabPane("Locale", id="time_tab"):
                         yield Static("Configure the system timezone:")
                         yield Static("")
                         yield Static("Timezone (e.g. America/New_York):")
                         yield Input(placeholder="Enter timezone", id="timezone_input")
                         yield Button("Set Timezone", id="set_timezone_btn")
+                        yield Static("Configure the system locale and language:")
+                        yield Static("")
+                        yield Static("Available: en_US.UTF-8", id="locales_available")
+                        yield Static("Additional locales (space/comma separated):")
+                        yield Input(placeholder="en_GB.UTF-8 en_AU.UTF-8", id="locales_input")
+                        yield Button("Add Locales", id="add_locales_btn")
+                        yield Static("System language:")
+                        yield Input(value="en_US.UTF-8", id="lang_input")
+                        yield Button("Set Language", id="set_language_btn")
 
                     with TabPane("Setup", id="packages_tab"):
                         yield Static("Start the initial installation:")
                         yield Button("Add the T2 Repository (GitHub)", id="add_repo_btn")
-                        yield Button("Add the T2 Repository (YaruMirror)", id="add_repo_mirror_btn")
+                        yield Button("Add the T2 Repository (YuruMirror)", id="add_repo_mirror_btn")
                         yield Static("Install the base system and T2 packages")
                         yield Button("Auto Install (in the app)", id="pacstrap_auto_btn")
                         yield Button("Manual Install (will exit the app)", id="pacstrap_manual_btn")
@@ -167,7 +178,7 @@ class T2ArchInstaller(App):
                         yield Static("Configure the new system.")
                         yield Button("Generate fstab", id="fstab_btn")
                         yield Button("Add T2 Repository (GitHub) to Chroot", id="chroot_repo_btn")
-                        yield Button("Add T2 Repository (YaruMirror) to Chroot", id="chroot_repo_mirror_btn")
+                        yield Button("Add T2 Repository (YuruMirror) to Chroot", id="chroot_repo_mirror_btn")
                         yield Button("Configure Modules & Locale", id="config_basic_btn")
                         yield Static("Hostname:")
                         yield Input(placeholder="Enter hostname", id="hostname_input")
@@ -225,7 +236,7 @@ class T2ArchInstaller(App):
     def on_mount(self):
         """Initialize the application."""
         self.title = "T2 Arch Linux Installer"
-      
+
         console = self.query_one("#console", RichLog)
         console.write("T2 Arch Linux Installer Started")
         console.write("=" * 50)
@@ -317,8 +328,10 @@ class T2ArchInstaller(App):
         elif button_id == "create_partitions_btn": self.create_partitions()
         elif button_id == "mount_partitions_btn": self.mount_partitions()
         elif button_id == "set_timezone_btn": self.set_timezone()
+        elif button_id == "add_locales_btn": self.add_locales()
+        elif button_id == "set_language_btn": self.set_language()
         elif button_id == "add_repo_btn": self.add_t2_repository()
-        elif button_id == "add_repo_mirror_btn": self.add_t2_repository_mirror()  
+        elif button_id == "add_repo_mirror_btn": self.add_t2_repository_mirror()
         elif button_id == "pacstrap_auto_btn": self.install_base_system_auto()
         elif button_id == "pacstrap_manual_btn": self.install_base_system_manual()
         elif button_id == "fstab_btn": self.generate_fstab()
@@ -333,7 +346,7 @@ class T2ArchInstaller(App):
             if self.bootloader_type == "grub": self.install_grub()
             else: self.install_systemd_boot()
         elif button_id == "boot_icon_btn": self.create_boot_icon()
-        elif button_id == "plymouth_btn": self.install_plymouth()  
+        elif button_id == "plymouth_btn": self.install_plymouth()
         elif button_id == "create_user_btn": self.create_user_and_services()
         elif button_id == "no_de_btn":
             console.write("No desktop environment selected")
@@ -370,7 +383,7 @@ class T2ArchInstaller(App):
         if not self.disk:
             console.write("[ERROR] No disk specified")
             return
-          
+
         mode = self.partition_mode
         include_swap = True
         if mode == "partition_without_swap":
@@ -535,6 +548,39 @@ class T2ArchInstaller(App):
         self.run_command("hwclock --systohc")
         self.run_command("timedatectl")
         console.write("Timezone configured successfully!")
+        self.query_one("#locales_input").focus()
+
+    def parse_locales(self, s: str) -> list[str]:
+        items = [x.strip() for x in re.split(r"[,\s]+", s or "") if x.strip()]
+        seen, out = set(), []
+        for it in items:
+            if it not in seen:
+                seen.add(it)
+                out.append(it)
+        return out
+
+    def update_available_locales_label(self):
+        # Always show the default + any user-added locales (de-duped)
+        all_locales = ["en_US.UTF-8"] + [loc for loc in self.locales_added if loc != "en_US.UTF-8"]
+        self.query_one("#locales_available", Static).update(
+            "Available: " + ", ".join(all_locales)
+        )
+
+    def add_locales(self):
+        """Add locales to the system."""
+        console = self.query_one("#console", RichLog)
+        rawlocales = self.query_one("#locales_input", Input).value
+        self.locales_added = self.parse_locales(rawlocales)
+        self.update_available_locales_label()
+        all_locales = ["en_US.UTF-8"] + [loc for loc in self.locales_added if loc != "en_US.UTF-8"]
+        console.write("Added locales:"+", ".join(all_locales))
+        self.query_one("#lang_input").focus()
+
+    def set_language(self):
+        """Set the system language."""
+        console = self.query_one("#console", RichLog)
+        self.lang_selected = (self.query_one("#lang_input", Input).value or "en_US.UTF-8").strip()
+        console.write("Language configured successfully!")
         self.query_one("#left_panel").focus()
         self.query_one(TabbedContent).active = "packages_tab"
 
@@ -546,7 +592,7 @@ class T2ArchInstaller(App):
         self.query_one("#console", RichLog).write("T2 repository added successfully!")
         self.query_one("#pacstrap_auto_btn").focus()
 
-  def add_t2_repository_mirror(self):
+    def add_t2_repository_mirror(self):
         """Add the T2 repository mirror to pacman."""
         repo_config = "[arch-mact2]\\nServer = https://mirror.funami.tech/arch-mact2/os/x86_64\\nSigLevel = Never"
         self.run_command(f"echo -e '{repo_config}' >> /etc/pacman.conf")
@@ -591,25 +637,32 @@ class T2ArchInstaller(App):
         self.run_in_chroot("pacman -Sy")
         self.query_one("#console", RichLog).write("T2 repository (GitHub) added to chroot successfully!")
         self.query_one("#config_basic_btn").focus()
-      
+
     def add_t2_repo_to_chroot(self):
         """Add the T2 repository mirror to pacman inside the chroot environment."""
         repo_config = "[arch-mact2]\\nServer = https://mirror.funami.tech/arch-mact2/os/x86_64\\nSigLevel = Never"
         self.run_in_chroot(f"echo -e '{repo_config}' >> /mnt/etc/pacman.conf")
         self.run_in_chroot("pacman -Sy")
-        self.query_one("#console", RichLog).write("T2 repository (YaruMirror) added to chroot successfully!")
+        self.query_one("#console", RichLog).write("T2 repository (YuruMirror) added to chroot successfully!")
         self.query_one("#config_basic_btn").focus()
 
     def configure_basic_system(self):
         """Configure T2 modules, locale, and time."""
         commands = [
                     f"ln -sf /usr/share/zoneinfo/{self.timezone} /etc/localtime",
-                    "hwclock --systohc",
-                    "\"echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen\"",
-                    "locale-gen",
-                    "\"echo 'LANG=en_US.UTF-8' > /etc/locale.conf\"",
-                    "\"echo 'LANGUAGE=en_US.UTF-8' > /etc/locale.conf\""
+                    "hwclock --systohc"
                     ]
+
+        locales_to_enable = ["en_US.UTF-8"] + [loc for loc in self.locales_added if loc != "en_US.UTF-8"]
+        lang = self.lang_selected or "en_US.UTF-8"
+        for loc in locales_to_enable:
+            commands.append(f"\"echo '{loc} UTF-8' >> /etc/locale.gen\"")
+        commands += [
+            "locale-gen",
+            f"\"echo 'LANG={lang}' > /etc/locale.conf\"",
+            f"\"echo 'LANGUAGE={lang}' >> /etc/locale.conf\"",
+        ]
+
         for cmd in commands:
             if not self.run_in_chroot(cmd):
                 self.query_one("#console", RichLog).write("[ERROR] Basic configuration failed")
@@ -758,7 +811,7 @@ class T2ArchInstaller(App):
         commands = [
                     f"useradd -m -G wheel,storage,power -s /bin/bash {self.username}",
                     f"'echo \"{self.username}:{user_password}\" | chpasswd'",
-                    "'echo -e \"[device]\\nwifi.backend=iwd\" > /etc/NetworkManager/NetworkManager.conf'",
+                    "'echo -e \"[device]\\nwifi.backend=iwd\" >> /etc/NetworkManager/NetworkManager.conf'",
                     "systemctl enable iwd.service",
                     "systemctl enable bluetooth.service",
                     "systemctl enable systemd-resolved.service",
