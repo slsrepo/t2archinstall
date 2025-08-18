@@ -218,8 +218,9 @@ class T2ArchInstaller(App):
                         yield Static("These include tiny-dfr (for better TouchBar support), ffmpeg, pipewire, ghostty and fastfetch.")
                         yield Button("Install Extra packages", id="extras_btn")
                         yield Static("T2 Suspend solutions:")
+                        yield Button("Disable Suspend and Sleep", id="suspend_sleep_btn")
                         yield Button("Ignore Suspend when closing the lid", id="ignore_lid_btn")
-                        yield Button("Suspend Workaround Service", id="suspend_fix_btn")
+                        yield Button("Enable Suspend Workaround Service", id="suspend_fix_btn")
 
                     with TabPane("Completion", id="completion_tab"):
                         yield Static("Installation Complete!")
@@ -228,6 +229,7 @@ class T2ArchInstaller(App):
                         yield Static("Choose an option:")
                         yield Button("Unmount Only", id="unmount_btn")
                         yield Button("Unmount & Reboot", id="reboot_btn")
+                        yield Button("Unmount & Shutdown", id="shutdown_btn")
             with Vertical(id="right_panel"):
                 yield RichLog(wrap=True, min_width=1, id="console")
                 yield Input(placeholder="Type commands here...", id="command_input")
@@ -356,10 +358,12 @@ class T2ArchInstaller(App):
             is_manual = "manual" in button_id
             self.install_desktop_environment(de_type, is_manual)
         elif button_id == "extras_btn": self.install_extras()
-        elif button_id == "firmware_btn": self.extract_firmware()
-        elif button_id == "touchbar_btn": self.install_touchbar()
+        elif button_id == "suspend_sleep_btn": self.disable_suspend_sleep()
+        elif button_id == "ignore_lid_btn": self.ignore_lid_switch()
+        elif button_id == "suspend_fix_btn": self.install_suspend_fix()
         elif button_id == "unmount_btn": self.unmount_system()
         elif button_id == "reboot_btn": self.reboot_system()
+        elif button_id == "shutdown_btn": self.shutdown_system()
 
     def cleanup_pacman_lock(self):
         """Clean up pacman lock file on errors."""
@@ -508,7 +512,7 @@ class T2ArchInstaller(App):
         console.write("Partitioning completed successfully!")
 
         # Auto-fill partition paths and switch to the mount tab
-        self.query_one("#root_input").value = root_part_final
+        self.query_one("#root_input").value = root_final
         self.query_one("#efi_input").value = efi_part
         self.query_one("#swap_input").value = swap_part
         self.query_one("#left_panel").focus()
@@ -689,7 +693,7 @@ class T2ArchInstaller(App):
         if not root_password:
             self.query_one("#console", RichLog).write("[ERROR] Please enter a root password")
             return
-        cmd = f"echo \"root:{root_password}\" | chpasswd"
+        cmd = f"echo 'root:{root_password}' | chpasswd"
         if self.run_in_chroot(cmd):
             self.query_one("#console", RichLog).write("Root password set successfully!")
             self.query_one("#root_password_input").value = ""
@@ -699,7 +703,7 @@ class T2ArchInstaller(App):
 
     def configure_sudoers(self):
         """Configure the sudoers file by uncommenting wheel."""
-        cmd = "sed -i 's/^# \\(%wheel ALL=(ALL) ALL\\)/\\1/' /etc/sudoers"
+        cmd = "sed -i 's/^# \\(%wheel ALL=(ALL:ALL) ALL\\)/\\1/' /etc/sudoers"
         if self.run_in_chroot(cmd):
             self.query_one("#console", RichLog).write("Sudoers configured successfully!")
             self.query_one("#build_initramfs_btn").focus()
@@ -724,9 +728,8 @@ class T2ArchInstaller(App):
         """Install and configure GRUB as the bootloader."""
         console = self.query_one("#console", RichLog)
         grub_params = "quiet splash intel_iommu=on iommu=pt pcie_ports=compat"
-        if self.use_lvm: grub_params += " root=/dev/vg0/root"
         commands = [
-                    f"sed -i 's|GRUB_CMDLINE_LINUX=\"quiet\"|GRUB_CMDLINE_LINUX=\"{grub_params}\"|' /etc/default/grub",
+                    f"sed -i 's|GRUB_CMDLINE_LINUX=\".*\"|GRUB_CMDLINE_LINUX=\"{grub_params}\"|' /etc/default/grub",
                     "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable",
                     "grub-mkconfig -o /boot/grub/grub.cfg"
                     ]
@@ -746,9 +749,9 @@ class T2ArchInstaller(App):
         entry_file_content = f"title Arch Linux T2\\nlinux /vmlinuz-linux-t2\\ninitrd /initramfs-linux-t2.img\\noptions {root_part} {kernel_params}"
         commands = [
                     "bootctl --path=/boot/efi install",
-                    "'echo \"default arch.conf\" > /boot/efi/loader/loader.conf'",
-                    "'echo \"timeout 3\" >> /boot/efi/loader/loader.conf'",
-                    f"\"echo -e '{entry_file_content}' > /boot/efi/loader/entries/arch.conf\""
+                    "echo 'default arch.conf' > /boot/efi/loader/loader.conf'",
+                    "echo 'timeout 3' >> /boot/efi/loader/loader.conf",
+                    f"echo -e '{entry_file_content}' > /boot/efi/loader/entries/arch.conf'"
                     ]
         for cmd in commands:
             if not self.run_in_chroot(cmd):
@@ -760,7 +763,7 @@ class T2ArchInstaller(App):
     def create_boot_icon(self):
         """Create an icon for the macOS startup manager."""
         console = self.query_one("#console", RichLog)
-        if not self.run_in_chroot("pacman -S --noconfirm wget librsvg libicns", timeout=180):
+        if not self.run_in_chroot("pacman -S --noconfirm wget librsvg libicns", timeout=600):
             console.write("[ERROR] Failed to install boot icon packages")
             return
         icon_url = "https://archlinux.org/logos/archlinux-icon-crystal-64.svg"
@@ -778,7 +781,7 @@ class T2ArchInstaller(App):
     def install_plymouth(self):
         """Install Plymouth for boot animation."""
         console = self.query_one("#console", RichLog)
-        if not self.run_in_chroot("pacman -S --noconfirm plymouth", timeout=180):
+        if not self.run_in_chroot("pacman -S --noconfirm plymouth", timeout=600):
             console.write("[ERROR] Failed to install plymouth")
             return
         # Add lvm2 hook if using LVM
@@ -810,8 +813,8 @@ class T2ArchInstaller(App):
 
         commands = [
                     f"useradd -m -G wheel,storage,power -s /bin/bash {self.username}",
-                    f"'echo \"{self.username}:{user_password}\" | chpasswd'",
-                    "'echo -e \"[device]\\nwifi.backend=iwd\" >> /etc/NetworkManager/NetworkManager.conf'",
+                    f"echo '{self.username}:{user_password}' | chpasswd",
+                    "echo -e '[device]\\nwifi.backend=iwd' >> /etc/NetworkManager/NetworkManager.conf",
                     "systemctl enable iwd.service",
                     "systemctl enable bluetooth.service",
                     "systemctl enable systemd-resolved.service",
@@ -883,6 +886,15 @@ class T2ArchInstaller(App):
         self.query_one("#left_panel").focus()
         self.query_one(TabbedContent).active = "completion_tab"
 
+    def disable_suspend_sleep(self):
+        """Set Suspend and Sleep options to no to disable them completely in sleep.conf."""
+        console = self.query_one("#console", Log)
+        cmd = "echo -e '\\nAllowSuspend=no\\nAllowHibernation=no\\nAllowHybridSleep=no\\nAllowSuspendThenHibernate=no\\nHibernateOnACPower=no' >> /etc/systemd/sleep.conf"
+        if not self.run_in_chroot(cmd):
+            console.write("[ERROR] Failed to disable suspend in sleep.conf")
+            return
+        console.write("Suspend and Sleep have been successfully disabled in /etc/systemd/sleep.conf!")
+
     def ignore_lid_switch(self):
         """Set HandleLidSwitch options to ignore to prevent Suspend."""
         console = self.query_one("#console", Log)
@@ -895,7 +907,7 @@ class T2ArchInstaller(App):
             if not self.run_in_chroot(cmd):
                 console.write("[ERROR] Failed to update lid switch settings")
                 return
-        console.write("Lid switch handling set to ignore in /etc/systemd/logind.conf")
+        console.write("Lid switch handling set to ignore in /etc/systemd/logind.conf!")
 
     def install_suspend_fix(self):
         """Install the Suspend workaround service."""
@@ -930,9 +942,9 @@ ExecStop={modprobe_path} brcmfmac_wcc
 WantedBy=sleep.target
 """
         command = (
-            "'cat <<\"EOF\" > /etc/systemd/system/suspend-fix-t2.service\n"
+            "cat <<\"EOF\" > /etc/systemd/system/suspend-fix-t2.service\n"
             f"{service_content}"
-            "EOF\n'"
+            "EOF\n"
         )
         if self.run_in_chroot(command):
             if self.run_in_chroot("systemctl enable suspend-fix-t2.service"):
@@ -956,6 +968,14 @@ WantedBy=sleep.target
         self.run_command("swapoff -a")
         console.write("Filesystems unmounted. Rebooting now...")
         self.run_command("reboot")
+
+    def shutdown_system(self):
+        """Unmount and shutdown the system."""
+        console = self.query_one("#console", RichLog)
+        self.run_command("umount -R /mnt")
+        self.run_command("swapoff -a")
+        console.write("Filesystems unmounted. Shutting down now...")
+        self.run_command("shutdown now")
 
 if __name__ == "__main__":
     app = T2ArchInstaller()
