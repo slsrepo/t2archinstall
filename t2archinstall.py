@@ -789,7 +789,7 @@ class T2ArchInstaller(App):
         label_commands = [
           "curl -fsSL -o disklabel-maker.py https://github.com/slsrepo/disklabel-utils/raw/refs/heads/main/disklabel-maker.py"
           "chmod +x disklabel-maker.py"
-          "python3 disklabel-maker.py "Arch" /usr/share/fonts/tex-gyre/texgyreheros-regular.otf /boot/efi/EFI/BOOT"
+          "python3 disklabel-maker.py 'Arch' /usr/share/fonts/tex-gyre/texgyreheros-regular.otf /boot/efi/EFI/BOOT"
         ]
         for cmd in commands:
             if not self.run_in_chroot(cmd):
