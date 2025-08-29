@@ -196,6 +196,7 @@ class T2ArchInstaller(App):
                             yield RadioButton("systemd-boot", id="systemd_bootloader")
                         yield Button("Install Bootloader", id="install_bootloader_btn")
                         yield Button("Create Boot Icon", id="boot_icon_btn")
+                        yield Button("Create Boot Label", id="boot_label_btn")
                         yield Button("Install Plymouth for boot animation (Optional)", id="plymouth_btn")
 
                     with TabPane("Desktop", id="desktop_tab"):
@@ -348,6 +349,7 @@ class T2ArchInstaller(App):
             if self.bootloader_type == "grub": self.install_grub()
             else: self.install_systemd_boot()
         elif button_id == "boot_icon_btn": self.create_boot_icon()
+        elif button_id == "boot_label_btn": self.create_boot_label()  
         elif button_id == "plymouth_btn": self.install_plymouth()
         elif button_id == "create_user_btn": self.create_user_and_services()
         elif button_id == "no_de_btn":
@@ -774,10 +776,28 @@ class T2ArchInstaller(App):
         )
         if self.run_in_chroot(icon_commands, timeout=180):
             console.write("Boot icon created successfully!")
-            self.query_one("#plymouth_btn").focus()
+            self.query_one("#boot_label_btn").focus()
         else:
             console.write("[ERROR] Boot icon creation failed")
 
+    def create_boot_label(self):
+        """Create a label for the macOS startup manager."""
+        console = self.query_one("#console", RichLog)
+        if not self.run_in_chroot("pacman -S --noconfirm python-pillow tex-gyre-fonts", timeout=600):
+            console.write("[ERROR] Failed to install boot label packages")
+            return
+        label_commands = [
+          "curl -fsSL -o disklabel-maker.py https://github.com/slsrepo/disklabel-utils/raw/refs/heads/main/disklabel-maker.py"
+          "chmod +x disklabel-maker.py"
+          "python3 disklabel-maker.py "Arch" /usr/share/fonts/tex-gyre/texgyreheros-regular.otf /boot/efi/EFI/BOOT"
+        ]
+        for cmd in commands:
+            if not self.run_in_chroot(cmd):
+                console.write("[ERROR] Boot label creation failed")
+                return
+            console.write("Boot icon created successfully!")
+            self.query_one("#plymouth_btn").focus()
+    
     def install_plymouth(self):
         """Install Plymouth for boot animation."""
         console = self.query_one("#console", RichLog)
