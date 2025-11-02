@@ -1001,7 +1001,7 @@ class T2ArchInstaller(App):
     def wm_shared_packages(self) -> list[str]:
         """Packages shared between Sway and Niri"""
         return [
-          "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk", "pipewire", "pipewire-alsa", "pipewire-pulse", "wireplumber", "wf-recorder", "gvfs", "polkit", "polkit-gnome", "swaybg", "swayidle", "swaylock", "swayimg", "swaync", "swayosd", "sway-contrib", "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel", "ghostty", "wayvnc", "imv", "brightnessctl", "ranger", "pavucontrol", "network-manager-applet", "swww", "swappy", "mpv", "mpd", "playerctl", "copyq", "cliphist", "rofi", "foot", "cava", "udiskie", "python-pywal", "pulsemixer", "pastel", "wmenu", "gtklock", "gtklock-playerctl-module", "gtklock-powerbar-module", "gtklock-userinfo-module"
+          "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk", "pipewire", "pipewire-alsa", "pipewire-pulse", "wireplumber", "wf-recorder", "gvfs", "polkit", "polkit-gnome", "swaybg", "swayidle", "swaylock", "swayimg", "swaync", "swayosd", "sway-contrib", "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel", "ghostty", "wayvnc", "imv", "brightnessctl", "ranger", "pavucontrol", "network-manager-applet", "swww", "swappy", "mpv", "mpd", "playerctl", "copyq", "cliphist", "rofi", "foot", "cava", "udiskie", "python-pywal", "pulsemixer", "pastel", "wmenu", "gtklock", "gtklock-playerctl-module", "gtklock-powerbar-module", "gtklock-userinfo-module", "wlr-randr", "wtype", "wlsunset", "dialog", "ddcutil", "power-profiles-daemon", "pamixer", "autotiling"
         ]
 
     async def wm_write_user_file(self, username: str, rel_path: str, content: str, overwrite: bool = True) -> bool:
@@ -1020,12 +1020,10 @@ class T2ArchInstaller(App):
 
     async def wm_install_greetd_slgreeter(self) -> bool:
         """
-        Run slgreeter under a minimal Sway on VT2 (no full desktop), then exit Sway
-        after login. Includes Tahoe CSS for slgreeter and gtklock, logind backend,
-        and Plymouth-friendly ordering.
+        Run slgreeter under a minimal Sway on VT2 (no full desktop), then exit Sway after login.
         """
         console = self.query_one("#console", RichLog)
-        console.write("Setting up slgreeter on minimal Sway (VT2)…")
+        console.write("Setting up slgreeter on minimal Sway (VT2)...")
 
         if not self.username:
             console.write("[ERROR] Username not set; create user first.")
@@ -1033,11 +1031,11 @@ class T2ArchInstaller(App):
         u = self.username
 
         if not await self.run_in_chroot("pacman -S --noconfirm greetd sway dbus"):
-            console.write("[ERROR] Failed to install greetd/gtkgreet/sway")
+            console.write("[ERROR] Failed to install greetd/sway")
             return False
 
         if not await self.run_in_chroot("curl -fsSL https://slsrepo.com/slgreeter -o slgreeter && install -Dm755 slgreeter /usr/local/bin/slgreeter"):
-            console.write("[ERROR] Failed to install greetd/gtkgreet/sway")
+            console.write("[ERROR] Failed to install slgreeter")
             return False
 
         config_toml = """[terminal]
@@ -1477,7 +1475,7 @@ class T2ArchInstaller(App):
             console.write("[ERROR] Failed to enable greetd.service")
             return False
 
-        console.write("gtkgreet is now hosted by a minimal Sway on VT2; Sway exits after login.")
+        console.write("greetd installed and configured on VT2 (logind backend) with slgreeter successfully!")
         return True
 
     async def wm_install_greetd_tuigreet(self) -> bool:
@@ -1557,14 +1555,13 @@ class T2ArchInstaller(App):
             console.write("[ERROR] Failed to enable greetd.service")
             return False
 
-        console.write("greetd configured on VT2 (logind backend) with Tuigreet → agreety fallback (journal logging).")
+        console.write("greetd installed and configured on VT2 (logind backend) with Tuigreet and agreety fallback (for journal logging) successfully!")
         return True
 
     async def wm_install_greetd_gtkgreet(self) -> bool:
         """
         Run gtkgreet under a minimal Sway on VT2 (no full desktop), then exit Sway
-        after login. Includes Tahoe CSS for gtkgreet and gtklock, logind backend,
-        and Plymouth-friendly ordering.
+        after login.
         """
         console = self.query_one("#console", RichLog)
         console.write("Setting up gtkgreet on minimal Sway (VT2)…")
@@ -1683,7 +1680,7 @@ class T2ArchInstaller(App):
             console.write("[ERROR] Failed to enable greetd.service")
             return False
 
-        console.write("gtkgreet is now hosted by a minimal Sway on VT2; Sway exits after login.")
+        console.write("greetd installed and configured on VT2 (logind backend) with gtkgreet successfully!")
         return True
     
     async def install_sway(self) -> bool:
