@@ -708,7 +708,12 @@ class T2ArchInstaller(App):
         """Set the system language."""
         console = self.query_one("#console", RichLog)
         self.lang_selected = (self.query_one("#lang_input", Input).value or "en_US.UTF-8").strip()
-        await self.run_command("echo -e 'KEYMAP=us' > /mnt/etc/vconsole.conf")
+        try:
+            os.makedirs("/mnt/etc", exist_ok=True)
+            with open("/mnt/etc/vconsole.conf", "w", encoding="utf-8", newline="\n") as f:
+                f.write(f"KEYMAP=us\n")
+        except Exception as e:
+            console.write(f"Could not create vconsole.conf: {e}")
         console.write("Language configured successfully!")
         self.query_one("#left_panel").focus()
         self.query_one(TabbedContent).active = "packages_tab"
