@@ -428,7 +428,7 @@ class T2ArchInstaller(App):
         elif button_id == "mount_partitions_btn": await self.mount_partitions()
         elif button_id == "set_timezone_btn": await self.set_timezone()
         elif button_id == "add_locales_btn": self.add_locales()
-        elif button_id == "set_language_btn": self.set_language()
+        elif button_id == "set_language_btn": await self.set_language()
         elif button_id == "add_repo_btn": await self.add_t2_repository()
         elif button_id == "add_repo_mirror_btn": await self.add_t2_repository_mirror()
         elif button_id == "pacstrap_auto_btn": await self.install_base_system_auto()
@@ -704,10 +704,11 @@ class T2ArchInstaller(App):
         console.write("Added locales:"+", ".join(all_locales))
         self.query_one("#lang_input").focus()
 
-    def set_language(self):
+    async def set_language(self):
         """Set the system language."""
         console = self.query_one("#console", RichLog)
         self.lang_selected = (self.query_one("#lang_input", Input).value or "en_US.UTF-8").strip()
+        await self.run_command("echo -e 'KEYMAP=us' > /mnt/etc/vconsole.conf")
         console.write("Language configured successfully!")
         self.query_one("#left_panel").focus()
         self.query_one(TabbedContent).active = "packages_tab"
