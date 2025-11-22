@@ -718,22 +718,161 @@ class T2ArchInstaller(App):
         self.query_one("#left_panel").focus()
         self.query_one(TabbedContent).active = "packages_tab"
 
+    def check_repo_in_pacman_conf(self, repo_name: str = "arch-mact2") -> tuple[bool, Optional[str]]:
+        """
+        Check if a repository exists in /etc/pacman.conf.
+
+        Returns:
+            tuple[bool, Optional[str]]: (exists, server_url)
+        """
+        try:
+            with open("/etc/pacman.conf", "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            in_repo_section = False
+            server_url = None
+
+            for line in lines:
+                stripped = line.strip()
+                # Check if we're entering the repository section
+                if stripped == f"[{repo_name}]":
+                    in_repo_section = True
+                    continue
+
+                # If we're in the repo section and find a Server line
+                if in_repo_section:
+                    if stripped.startswith("Server =") or stripped.startswith("Server="):
+                        # Extract the URL after "Server = "
+                        parts = stripped.split("=", 1)
+                        if len(parts) == 2:
+                            server_url = parts[1].strip()
+                        break
+                    # If we hit another section, stop looking
+                    elif stripped.startswith("[") and stripped.endswith("]"):
+                        break
+
+            return (in_repo_section, server_url)
+        except FileNotFoundError:
+            return (False, None)
+        except Exception as e:
+            try:
+                console = self.query_one("#console", RichLog)
+                console.write(f"Error reading /etc/pacman.conf: {e}")
+            except Exception:
+                print(f"Error reading /etc/pacman.conf: {e}", file=sys.stderr)
+            return (False, None)
+
+    async def update_repo_in_pacman_conf(self, repo_name: str, server_url: str) -> bool:
+        """
+        Update the server URL for an existing repository in /etc/pacman.conf.
+        If the repository section exists but has no Server line, adds one.
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            with open("/etc/pacman.conf", "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            in_repo_section = False
+            updated = False
+          
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if stripped == f"[{repo_name}]":
+                    in_repo_section = True
+                    continue
+                if in_repo_section and (stripped.startswith("Server =") or stripped.startswith("Server=")):
+                    lines[i] = f"Server = {server_url}\n"
+                    updated = True
+                    break
+                elif in_repo_section and stripped.startswith("[") and stripped.endswith("]"):
+                    lines.insert(i, f"Server = {server_url}\n")
+                    updated = True
+                    break
+            if in_repo_section and not updated:
+                lines.append(f"Server = {server_url}\n")
+                updated = True
+            if updated:
+                with open("/etc/pacman.conf", "w", encoding="utf-8") as f:
+                    f.writelines(lines)
+                return True
+            return False
+        except Exception as e:
+            try:
+                console = self.query_one("#console", RichLog)
+                console.write(f"[ERROR] Failed to update T2 repository URL: {e}")
+            except Exception:
+                # Fallback to printing if console is not available
+                print(f"[ERROR] Failed to update T2 repository URL: {e}", file=sys.stderr)
+            return False
+
+    def build_repo_config(self, repo_name: str, server_url: str, sig_level: str = "Never") -> str:
+        """
+        Build a repository configuration string for pacman.conf.
+        Arguments:
+            repo_name: Name of the repository
+            server_url: Server URL for the repository
+            sig_level: Signature verification level
+        Returns:
+            str: Formatted repository configuration string
+        """
+        return f"[{repo_name}]\\nServer = {server_url}\\nSigLevel = {sig_level}"
+
     async def add_t2_repository(self):
         """Add the T2 repository to pacman."""
         console = self.query_one("#console", RichLog)
-        repo_config = "[arch-mact2]\\nServer = https://github.com/NoaHimesaka1873/arch-mact2-mirror/releases/download/release\\nSigLevel = Never"
-        await self.run_command(f"echo -e '{repo_config}' >> /etc/pacman.conf")
-        await self.run_command("pacman -Sy")
-        console.write("T2 repository added successfully!")
+        repo_name = "arch-mact2"
+        server_url = "https://github.com/NoaHimesaka1873/arch-mact2-mirror/releases/download/release"
+
+        # Check if repository already exists
+        exists, current_url = self.check_repo_in_pacman_conf(repo_name)
+
+        if exists and current_url is not None and current_url == server_url:
+            console.write(f"T2 repository already exists with the correct URL. Skipping...")
+            await self.run_command("pacman -Sy")
+        elif exists and (current_url is None or current_url != server_url):
+            console.write(f"T2 repository exists but URL is missing or different. Updating...")
+            if await self.update_repo_in_pacman_conf(repo_name, server_url):
+                console.write(f"T2 repository URL updated to GitHub successfully!")
+                await self.run_command("pacman -Sy")
+            else:
+                console.write(f"[ERROR] Failed to update T2 repository URL.")
+        else:
+            console.write(f"Adding T2 repository (GitHub)...")
+            repo_config = self.build_repo_config(repo_name, server_url)
+            await self.run_command(f"echo -e '{repo_config}' >> /etc/pacman.conf")
+            await self.run_command("pacman -Sy")
+            console.write("T2 repository (GitHub) added successfully!")
+
         self.query_one("#pacstrap_auto_btn").focus()
 
     async def add_t2_repository_mirror(self):
         """Add the T2 repository mirror to pacman."""
         console = self.query_one("#console", RichLog)
-        repo_config = "[arch-mact2]\\nServer = https://mirror.funami.tech/arch-mact2/os/x86_64\\nSigLevel = Never"
-        await self.run_command(f"echo -e '{repo_config}' >> /etc/pacman.conf")
-        await self.run_command("pacman -Sy")
-        console.write("T2 repository added successfully!")
+        repo_name = "arch-mact2"
+        server_url = "https://mirror.funami.tech/arch-mact2/os/x86_64"
+
+        # Check if repository already exists
+        exists, current_url = self.check_repo_in_pacman_conf(repo_name)
+
+        if exists and current_url is not None and current_url == server_url:
+            console.write(f"T2 repository already exists with the correct URL. Skipping...")
+            await self.run_command("pacman -Sy")
+        elif exists and (current_url is None or current_url != server_url):
+            console.write(f"T2 repository exists but URL is different or missing. Updating...")
+            if await self.update_repo_in_pacman_conf(repo_name, server_url):
+                console.write(f"T2 repository URL updated to YuruMirror successfully!")
+                await self.run_command("pacman -Sy")
+            else:
+                console.write(f"[ERROR] Failed to update T2 repository URL.")
+        else:
+            console.write(f"Adding T2 repository (YuruMirror)...")
+            repo_config = self.build_repo_config(repo_name, server_url)
+            await self.run_command(f"echo -e '{repo_config}' >> /etc/pacman.conf")
+            await self.run_command("pacman -Sy")
+            console.write("T2 repository (YuruMirror) added successfully!")
+
         self.query_one("#pacstrap_auto_btn").focus()
 
     async def install_base_system_auto(self):
@@ -1007,7 +1146,18 @@ class T2ArchInstaller(App):
     def wm_shared_packages(self) -> list[str]:
         """Packages shared between Sway and Niri"""
         return [
-          "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk", "pipewire", "pipewire-alsa", "pipewire-pulse", "wireplumber", "wf-recorder", "gvfs", "polkit", "polkit-gnome", "swaybg", "swayidle", "swaylock", "swayimg", "swaync", "swayosd", "sway-contrib", "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel", "ghostty", "wayvnc", "imv", "brightnessctl", "ranger", "pavucontrol", "network-manager-applet", "swww", "swappy", "mpv", "mpd", "playerctl", "copyq", "cliphist", "rofi", "foot", "cava", "udiskie", "python-pywal", "pulsemixer", "pastel", "wmenu", "gtklock", "gtklock-playerctl-module", "gtklock-powerbar-module", "gtklock-userinfo-module", "wlr-randr", "wtype", "wlsunset", "dialog", "ddcutil", "power-profiles-daemon", "pamixer", "autotiling", "dgop"
+            "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk",
+            "pipewire", "pipewire-alsa", "pipewire-pulse", "wireplumber",
+            "wf-recorder", "gvfs", "polkit", "polkit-gnome",
+            "swaybg", "swayidle", "swaylock", "swayimg", "swaync", "swayosd", "sway-contrib",
+            "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel",
+            "ghostty", "wayvnc", "imv", "brightnessctl", "ranger", "pavucontrol",
+            "network-manager-applet", "swww", "swappy", "mpv", "mpd", "playerctl",
+            "copyq", "cliphist", "rofi", "foot", "cava", "udiskie", "python-pywal",
+            "pulsemixer", "pastel", "wmenu", "gtklock", "gtklock-playerctl-module",
+            "gtklock-powerbar-module", "gtklock-userinfo-module", "wlr-randr", "wtype",
+            "wlsunset", "dialog", "ddcutil", "power-profiles-daemon", "pamixer",
+            "autotiling", "dgop"
         ]
 
     async def wm_write_user_file(self, username: str, rel_path: str, content: str, overwrite: bool = True) -> bool:
@@ -1688,7 +1838,7 @@ class T2ArchInstaller(App):
 
         console.write("greetd installed and configured on VT2 (logind backend) with gtkgreet successfully!")
         return True
-    
+
     async def install_sway(self) -> bool:
         console = self.query_one("#console", RichLog)
         console.write("Installing Sway... This might take a while.")
