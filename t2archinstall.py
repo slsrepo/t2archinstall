@@ -218,7 +218,7 @@ class T2ArchInstaller(App):
                         yield Button("KDE", id="kde_auto_btn")
                         # yield Button("KDE (Manual)", id="kde_manual_btn")
                         yield Button("COSMIC", id="cosmic_auto_btn")
-                        yield Button(" (Experimental)", id="_auto_btn")
+                        # yield Button("Sway (Experimental)", id="sway_auto_btn")
                         yield Button("Niri (Experimental)", id="niri_auto_btn")
                         yield Static("Hyprland is not supported!")
 
@@ -451,7 +451,7 @@ class T2ArchInstaller(App):
         elif button_id == "no_de_btn":
             console.write("No desktop environment selected")
             tabs.active = "extras_tab"
-        elif button_id in ["gnome_auto_btn", "gnome_manual_btn", "kde_auto_btn", "kde_manual_btn", "cosmic_auto_btn", "_auto_btn", "niri_auto_btn"]:
+        elif button_id in ["gnome_auto_btn", "gnome_manual_btn", "kde_auto_btn", "kde_manual_btn", "cosmic_auto_btn", "sway_auto_btn", "niri_auto_btn"]:
             de_type = button_id.split("_", 1)[0] # "gnome"|"kde"|"cosmic"|""|"niri"
             is_manual = "manual" in button_id
             await self.install_desktop_environment(de_type, is_manual)
