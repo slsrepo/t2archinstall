@@ -1098,11 +1098,14 @@ class T2ArchInstaller(App):
         if not await self.run_in_chroot("pacman -S --noconfirm --needed plymouth", timeout=600):
             console.write("[ERROR] Failed to install plymouth")
             return
-        # Add lvm2 hook if using LVM
-        if self.use_lvm:
-            await self.run_in_chroot("sed -i 's|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block lvm2 filesystems fsck)|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont plymouth block lvm2 filesystems fsck)|' /etc/mkinitcpio.conf")
-        else:
-            await self.run_in_chroot("sed -i 's|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block filesystems fsck)|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont plymouth block filesystems fsck)|' /etc/mkinitcpio.conf")
+        # Add plymouth to HOOKS before the block hook on lines that don't already include it
+        hook_cmd = r"sed -i '/^HOOKS=/ {/plymouth/! s/\bblock\b/plymouth block/ }' /etc/mkinitcpio.conf"
+        if not await self.run_in_chroot(hook_cmd):
+            console.write("[ERROR] Failed to update mkinitcpio hooks for plymouth")
+            return
+        if not await self.run_in_chroot(r"grep -Eq '^HOOKS=.*plymouth.*block' /etc/mkinitcpio.conf"):
+            console.write("[ERROR] Plymouth hook was not added to mkinitcpio")
+            return
         console.write("Rebuilding initramfs to add Plymouth (This might take a while)...")
         if await self.run_in_chroot("mkinitcpio -P", timeout=600):
             console.write("Plymouth installed and initramfs rebuilt successfully!")
