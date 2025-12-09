@@ -218,7 +218,7 @@ class T2ArchInstaller(App):
                         yield Button("KDE", id="kde_auto_btn")
                         # yield Button("KDE (Manual)", id="kde_manual_btn")
                         yield Button("COSMIC", id="cosmic_auto_btn")
-                        yield Button("Sway (Experimental)", id="sway_auto_btn")
+                        yield Button(" (Experimental)", id="_auto_btn")
                         yield Button("Niri (Experimental)", id="niri_auto_btn")
                         yield Static("Hyprland is not supported!")
 
@@ -451,8 +451,8 @@ class T2ArchInstaller(App):
         elif button_id == "no_de_btn":
             console.write("No desktop environment selected")
             tabs.active = "extras_tab"
-        elif button_id in ["gnome_auto_btn", "gnome_manual_btn", "kde_auto_btn", "kde_manual_btn", "cosmic_auto_btn", "sway_auto_btn", "niri_auto_btn"]:
-            de_type = button_id.split("_", 1)[0] # "gnome"|"kde"|"cosmic"|"sway"|"niri"
+        elif button_id in ["gnome_auto_btn", "gnome_manual_btn", "kde_auto_btn", "kde_manual_btn", "cosmic_auto_btn", "_auto_btn", "niri_auto_btn"]:
+            de_type = button_id.split("_", 1)[0] # "gnome"|"kde"|"cosmic"|""|"niri"
             is_manual = "manual" in button_id
             await self.install_desktop_environment(de_type, is_manual)
         elif button_id == "extras_btn": await self.install_extras()
@@ -1059,7 +1059,7 @@ class T2ArchInstaller(App):
     async def create_boot_icon(self):
         """Create an icon for the macOS startup manager."""
         console = self.query_one("#console", RichLog)
-        if not await self.run_in_chroot("pacman -S --noconfirm wget librsvg libicns", timeout=600):
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed wget librsvg libicns", timeout=600):
             console.write("[ERROR] Failed to install boot icon packages")
             return
         icon_url = "https://archlinux.org/logos/archlinux-icon-crystal-64.svg"
@@ -1077,7 +1077,7 @@ class T2ArchInstaller(App):
     async def create_boot_label(self):
         """Create a label for the macOS startup manager."""
         console = self.query_one("#console", RichLog)
-        if not await self.run_in_chroot("pacman -S --noconfirm python-pillow tex-gyre-fonts", timeout=600):
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed python-pillow tex-gyre-fonts", timeout=600):
             console.write("[ERROR] Failed to install boot label packages")
             return
         label_commands = [
@@ -1095,7 +1095,7 @@ class T2ArchInstaller(App):
     async def install_plymouth(self):
         """Install Plymouth for boot animation."""
         console = self.query_one("#console", RichLog)
-        if not await self.run_in_chroot("pacman -S --noconfirm plymouth", timeout=600):
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed plymouth", timeout=600):
             console.write("[ERROR] Failed to install plymouth")
             return
         # Add lvm2 hook if using LVM
@@ -1144,20 +1144,18 @@ class T2ArchInstaller(App):
         self.query_one("#no_de_btn").focus()
 
     def wm_shared_packages(self) -> list[str]:
-        """Packages shared between Sway and Niri"""
+        """Packages shared between  and Niri"""
         return [
             "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk",
             "pipewire", "pipewire-alsa", "pipewire-pulse", "wireplumber",
-            "wf-recorder", "gvfs", "polkit", "polkit-gnome",
-            "swaybg", "swayidle", "swaylock", "swayimg", "swaync", "swayosd", "sway-contrib",
+            "wf-recorder", "gvfs", "polkit", "polkit-gnome", "swaync", "swayosd",
             "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel",
             "ghostty", "wayvnc", "imv", "brightnessctl", "ranger", "pavucontrol",
             "network-manager-applet", "swww", "swappy", "mpv", "mpd", "playerctl",
-            "copyq", "cliphist", "rofi", "foot", "cava", "udiskie", "python-pywal",
-            "pulsemixer", "pastel", "wmenu", "gtklock", "gtklock-playerctl-module",
+            "copyq", "cliphist", "rofi", "cava", "udiskie", "python-pywal",
+            "pulsemixer", "pastel", "gtklock", "gtklock-playerctl-module",
             "gtklock-powerbar-module", "gtklock-userinfo-module", "wlr-randr", "wtype",
-            "wlsunset", "dialog", "ddcutil", "power-profiles-daemon", "pamixer",
-            "autotiling", "dgop"
+            "wlsunset", "dialog", "ddcutil", "power-profiles-daemon", "pamixer", "dgop"
         ]
 
     async def wm_write_user_file(self, username: str, rel_path: str, content: str, overwrite: bool = True) -> bool:
@@ -1176,18 +1174,18 @@ class T2ArchInstaller(App):
 
     async def wm_install_greetd_slgreeter(self) -> bool:
         """
-        Run slgreeter under a minimal Sway on VT2 (no full desktop), then exit Sway after login.
+        Run slgreeter with a minimal Weston config on VT2 and exit it after logging in.
         """
         console = self.query_one("#console", RichLog)
-        console.write("Setting up slgreeter on minimal Sway (VT2)...")
+        console.write("Setting up slgreeter with Weston (on VT2)...")
 
         if not self.username:
             console.write("[ERROR] Username not set; create user first.")
             return False
         u = self.username
 
-        if not await self.run_in_chroot("pacman -S --noconfirm greetd sway dbus"):
-            console.write("[ERROR] Failed to install greetd/sway")
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed greetd weston dbus"):
+            console.write("[ERROR] Failed to install greetd/")
             return False
 
         if not await self.run_in_chroot("curl -fsSL https://slsrepo.com/slgreeter -o slgreeter && install -Dm755 slgreeter /usr/local/bin/slgreeter"):
@@ -1198,25 +1196,23 @@ class T2ArchInstaller(App):
     vt = 2
 
     [default_session]
-    command = "sway --config /etc/greetd/sway-greeter.conf"
+    command = "weston --config /etc/greetd/weston.ini"
     user = "greeter"
     """
         # Sessions visible in gtkgreet
-        environments = """dbus-run-session -- sway
+        environments = """dbus-run-session -- 
     dbus-run-session -- niri-session
     """
 
-        sway_greeter_conf = """# /etc/greetd/sway-greeter.conf (minimal)
-    xwayland disable
-    focus_follows_mouse no
-
-    # simple background so it’s not raw black
-    output * bg #101010 solid_color
-
-    # Start the greeter as a layer-shell and exit sway after it finishes
-    exec "slgreeter; swaymsg exit"
-
-    bindsym Mod4+shift+e exec swaynag -t warning -m 'What do you want to do?' -b 'Reboot' 'systemctl reboot' -b 'Shut Down' 'systemctl poweroff'
+        weston_kiosk_conf = """[core]
+    shell=kiosk-shell.so
+    idle-time=0
+    
+    [shell]
+    panel-position=none
+    
+    [autolaunch]
+    path=/usr/local/bin/slgreeter
     """
 
         override_conf = """[Unit]
@@ -1601,8 +1597,8 @@ class T2ArchInstaller(App):
                 f.write(config_toml)
             with open("/mnt/etc/greetd/environments", "w", encoding="utf-8", newline="\n") as f:
                 f.write(environments)
-            with open("/mnt/etc/greetd/sway-greeter.conf", "w", encoding="utf-8", newline="\n") as f:
-                f.write(sway_greeter_conf)
+            with open("/mnt/etc/greetd/weston.ini", "w", encoding="utf-8", newline="\n") as f:
+                f.write(weston_kiosk_conf)
             with open("/mnt/etc/greetd/slgreeter.css", "w", encoding="utf-8", newline="\n") as f:
                 f.write(slgreeter_css)
 
@@ -1620,6 +1616,7 @@ class T2ArchInstaller(App):
             return False
 
         if not await self.run_in_chroot(
+            "mkdir -p /var/lib/greetd && "
             "chown -R greeter:greeter /var/lib/greetd/.config && "
             f"chown -R {u}:{u} /home/{u}/.config/gtklock && "
             "systemctl daemon-reload && "
@@ -1631,14 +1628,14 @@ class T2ArchInstaller(App):
             console.write("[ERROR] Failed to enable greetd.service")
             return False
 
-        console.write("greetd installed and configured on VT2 (logind backend) with slgreeter successfully!")
+        console.write("greetd with slgreeter installed and configured on VT2 (with logind backend) successfully!")
         return True
 
     async def wm_install_greetd_tuigreet(self) -> bool:
         console = self.query_one("#console", RichLog)
         console.write("Setting up greetd + Tuigreet with safe fallback...")
 
-        if not await self.run_in_chroot("pacman -S --noconfirm greetd greetd-tuigreet"):
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed greetd greetd-tuigreet"):
             console.write("[ERROR] Failed to install greetd/tuigreet")
             return False
 
@@ -1727,7 +1724,7 @@ class T2ArchInstaller(App):
             return False
         u = self.username
 
-        if not await self.run_in_chroot("pacman -S --noconfirm greetd greetd-gtkgreet sway dbus"):
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed greetd greetd-gtkgreet sway dbus"):
             console.write("[ERROR] Failed to install greetd/gtkgreet/sway")
             return False
 
@@ -1844,7 +1841,7 @@ class T2ArchInstaller(App):
         console.write("Installing Sway... This might take a while.")
 
         packages = " ".join(self.wm_shared_packages() + ["sway", "xorg-xwayland"])
-        if not await self.run_in_chroot(f"pacman -S --noconfirm {packages}", timeout=1800):
+        if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages}", timeout=1800):
             console.write("[ERROR] Failed to install Sway packages")
             return False
 
@@ -1902,10 +1899,10 @@ bindsym $mod+Shift+Backspace exec swaynag -t warning -m 'Exit sway?' -b 'Exit' '
 
     async def install_niri(self) -> bool:
         console = self.query_one("#console", RichLog)
-        console.write("Installing Niri... This might take a while.")
+        # console.write("Installing Niri... This might take a while.")
 
         packages = " ".join(self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring"])
-        if not await self.run_in_chroot(f"pacman -S --noconfirm {packages}", timeout=1800):
+        if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages}", timeout=1800):
             console.write("[ERROR] Failed to install Niri packages")
             return False
 
@@ -1923,21 +1920,25 @@ bindsym $mod+Shift+Backspace exec swaynag -t warning -m 'Exit sway?' -b 'Exit' '
     async def install_desktop_environment(self, de_type: str, is_manual: bool):
         """Install the selected desktop environment."""
         console = self.query_one("#console", RichLog)
-        console.write(f"Installing {de_type.upper()}... This might take a while.")
+        if de_type == "niri":
+          console.write("Installing Niri... his might take a while.")
+        else:
+          console.write(f"Installing {de_type.upper()}... This might take a while.")
+          
         if de_type == "gnome":
             de_commands = [
-                            "pacman -S --noconfirm gnome gnome-extra gnome-tweaks gnome-power-manager power-profiles-daemon gdm",
+                            "pacman -S --noconfirm --needed gnome gnome-extra gnome-tweaks gnome-power-manager power-profiles-daemon gdm",
                             "systemctl enable gdm.service",
                             "systemctl enable power-profiles-daemon.service"
                           ]
         if de_type == "kde":
             de_commands = [
-                            "pacman -S --noconfirm plasma kde-applications sddm",
+                            "pacman -S --noconfirm --needed plasma kde-applications sddm",
                             "systemctl enable sddm.service"
                           ]
         if de_type == "cosmic":
             de_commands = [
-                            "pacman -S --noconfirm cosmic",
+                            "pacman -S --noconfirm --needed cosmic",
                             "systemctl enable cosmic-greeter.service"
                           ]
         if de_type == "sway":
@@ -1964,12 +1965,12 @@ bindsym $mod+Shift+Backspace exec swaynag -t warning -m 'Exit sway?' -b 'Exit' '
         """Install additional packages."""
         console = self.query_one("#console", RichLog)
         commands = [
-                    "pacman -S --noconfirm tiny-dfr ffmpeg pipewire pipewire-zeroconf ghostty fastfetch",
+                    "pacman -S --noconfirm --needed tiny-dfr ffmpeg pipewire pipewire-zeroconf ghostty fastfetch",
                     "mkdir -p /etc/tiny-dfr",
                     "cp /usr/share/tiny-dfr/config.toml /etc/tiny-dfr/config.toml",
                     "sed -i 's/^MediaLayerDefault[[:space:]]*=[[:space:]]*false/MediaLayerDefault = true/' /etc/tiny-dfr/config.toml",
                     ]
-        console.write("Installing extras ...")
+        console.write("Installing extras...")
         for cmd in commands:
             if not await self.run_in_chroot(cmd, timeout=600):
                 console.write("[ERROR] Extras installation failed")
