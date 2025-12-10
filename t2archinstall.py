@@ -1575,7 +1575,7 @@ button.suggested-action {
 }
 """
 
-    gtk_css = """
+        gtk_css = """\
 window, .background {
     background: rgba(18,18,18,0.35);
 }
