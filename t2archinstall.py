@@ -1103,8 +1103,18 @@ class T2ArchInstaller(App):
         if not await self.run_in_chroot(hook_cmd):
             console.write("[ERROR] Failed to update mkinitcpio hooks for plymouth")
             return
+        # Ensure the lvm2 hook is present when LVM is in use
+        if self.use_lvm:
+            lvm_cmd = r"sed -i '/^HOOKS=/ {/lvm2/! s/\bblock\b/block lvm2/ }' /etc/mkinitcpio.conf"
+            if not await self.run_in_chroot(lvm_cmd):
+                console.write("[ERROR] Failed to add lvm2 hook after Plymouth setup")
+                return
+        # Validate the hooks for both modes
         if not await self.run_in_chroot(r"grep -Eq '^HOOKS=.*plymouth.*block' /etc/mkinitcpio.conf"):
-            console.write("[ERROR] Plymouth hook was not added to mkinitcpio")
+            console.write("[ERROR] Failed to add Plymouth to mkinitcpio hooks")
+            return
+        if self.use_lvm and not await self.run_in_chroot(r"grep -Eq '^HOOKS=.*plymouth.*block.*lvm2' /etc/mkinitcpio.conf"):
+            console.write("[ERROR] lvm2 hook missing after Plymouth setup")
             return
         console.write("Rebuilding initramfs to add Plymouth (This might take a while)...")
         if await self.run_in_chroot("mkinitcpio -P", timeout=600):
