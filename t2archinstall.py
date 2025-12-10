@@ -1217,16 +1217,17 @@ class T2ArchInstaller(App):
     dbus-run-session -- niri-session
     """
 
-        weston_kiosk_conf = """[core]
-    shell=kiosk-shell.so
-    idle-time=0
-    
-    [shell]
-    panel-position=none
-    
-    [autolaunch]
-    path=/usr/local/bin/slgreeter
-    """
+        weston_kiosk_conf = """\
+[core]
+shell=kiosk-shell.so
+idle-time=0
+
+[shell]
+panel-position=none
+
+[autolaunch]
+path=/usr/local/bin/slgreeter
+"""
 
         override_conf = """[Unit]
     After=systemd-user-sessions.service plymouth-quit.service plymouth-quit-wait.service
