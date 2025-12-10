@@ -1205,17 +1205,18 @@ class T2ArchInstaller(App):
             console.write("[ERROR] Failed to install slgreeter")
             return False
 
-        config_toml = """[terminal]
-    vt = 2
+        config_toml = """\
+[terminal]
+vt = 2
 
-    [default_session]
-    command = "weston --config /etc/greetd/weston.ini"
-    user = "greeter"
-    """
+[default_session]
+command = "weston --config /etc/greetd/weston.ini"
+user = "greeter"
+"""
         # Sessions visible in gtkgreet
-        environments = """dbus-run-session -- 
-    dbus-run-session -- niri-session
-    """
+        environments = """\
+dbus-run-session -- niri-session
+"""
 
         weston_kiosk_conf = """\
 [core]
@@ -1230,380 +1231,380 @@ path=/usr/local/bin/slgreeter
 """
 
         override_conf = """[Unit]
-    After=systemd-user-sessions.service plymouth-quit.service plymouth-quit-wait.service
-    Conflicts=getty@tty2.service
+After=systemd-user-sessions.service plymouth-quit.service plymouth-quit-wait.service
+Conflicts=getty@tty2.service
 
-    [Service]
-    Environment=LIBSEAT_BACKEND=logind
-    """
+[Service]
+Environment=LIBSEAT_BACKEND=logind
+"""
 
-        slgreeter_css = """
-    window {
-      background: transparent;
-      color: #ffffff;
-      font-family: system-ui, -apple-system, "SF Pro Text", Inter, Cantarell, "Noto Sans", sans-serif;
-    }
+        slgreeter_css = """\
+window {
+  background: transparent;
+  color: #ffffff;
+  font-family: system-ui, -apple-system, "SF Pro Text", Inter, Cantarell, "Noto Sans", sans-serif;
+}
 
-    /* Top */
-    label.date {
-      font-size: 18px;
-      font-weight: 600;
-      opacity: .92;
-      text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
-    }
+/* Top */
+label.date {
+  font-size: 18px;
+  font-weight: 600;
+  opacity: .92;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
+}
 
-    label.clock {
-      font-size: 120px;
-      font-weight: 700;
-      text-shadow: 0 2px 14px rgba(0, 0, 0, .35);
-    }
+label.clock {
+  font-size: 120px;
+  font-weight: 700;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, .35);
+}
 
-    /* Middle */
-    .panel {
-      background: transparent;
-      margin-bottom: 72px;
-    }
+/* Middle */
+.panel {
+  background: transparent;
+  margin-bottom: 72px;
+}
 
-    /* lift above power buttons */
+/* lift above power buttons */
 
-    /* User picker */
-    .userflow {
-      margin-bottom: 8px;
-    }
+/* User picker */
+.userflow {
+  margin-bottom: 8px;
+}
 
-    .userchip {
-      padding: 8px 10px;
-      background: rgba(255, 255, 255, .08);
-      border: 1px solid rgba(255, 255, 255, .18);
-      border-radius: 14px;
-    }
+.userchip {
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, .08);
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 14px;
+}
 
-    .userchip:hover {
-      background: rgba(255, 255, 255, .14);
-    }
+.userchip:hover {
+  background: rgba(255, 255, 255, .14);
+}
 
-    .userchip:focus,
-    .userchip:active {
-      background: rgba(255, 255, 255, .18);
-      outline: 2px solid rgba(255, 255, 255, .35);
-    }
+.userchip:focus,
+.userchip:active {
+  background: rgba(255, 255, 255, .18);
+  outline: 2px solid rgba(255, 255, 255, .35);
+}
 
-    .userchip .avatar {
-      margin-bottom: 6px;
-      min-width: 72px;
-      min-height: 72px;
-    }
+.userchip .avatar {
+  margin-bottom: 6px;
+  min-width: 72px;
+  min-height: 72px;
+}
 
-    .userchip-label {
-      font-size: 13px;
-      opacity: .95;
-    }
+.userchip-label {
+  font-size: 13px;
+  opacity: .95;
+}
 
-    /* Avatar + entries */
-    .avatar {
-      border-radius: 999px;
-      min-width: 96px;
-      min-height: 96px;
-      margin-bottom: 12px;
-    }
+/* Avatar + entries */
+.avatar {
+  border-radius: 999px;
+  min-width: 96px;
+  min-height: 96px;
+  margin-bottom: 12px;
+}
 
-    entry {
-      min-height: 34px;
-      padding: 7px 12px;
-      font-size: 16px;
-      background: rgba(255, 255, 255, .16);
-      border: 1px solid rgba(255, 255, 255, .28);
-      border-radius: 12px;
-      color: #fff;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
-    }
+entry {
+  min-height: 34px;
+  padding: 7px 12px;
+  font-size: 16px;
+  background: rgba(255, 255, 255, .16);
+  border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: 12px;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+}
 
-    entry:focus {
-      border-color: rgba(255, 255, 255, .45);
-      box-shadow: 0 0 0 2px rgba(255, 255, 255, .15), inset 0 1px 0 rgba(255, 255, 255, .12);
-    }
+entry:focus {
+  border-color: rgba(255, 255, 255, .45);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .15), inset 0 1px 0 rgba(255, 255, 255, .12);
+}
 
-    /* Arrow login button */
-    button.suggested-action {
-      min-height: 40px;
-      min-width: 40px;
-      border-radius: 999px;
-      padding: 0 14px;
-      background: rgba(255, 255, 255, .22);
-      border: 1px solid rgba(255, 255, 255, .35);
-      color: #fff;
-    }
+/* Arrow login button */
+button.suggested-action {
+  min-height: 40px;
+  min-width: 40px;
+  border-radius: 999px;
+  padding: 0 14px;
+  background: rgba(255, 255, 255, .22);
+  border: 1px solid rgba(255, 255, 255, .35);
+  color: #fff;
+}
 
-    button.suggested-action:hover {
-      background: rgba(255, 255, 255, .28);
-    }
+button.suggested-action:hover {
+  background: rgba(255, 255, 255, .28);
+}
 
-    button.suggested-action:active {
-      background: rgba(255, 255, 255, .18);
-    }
+button.suggested-action:active {
+  background: rgba(255, 255, 255, .18);
+}
 
-    /* Sessions (GtkDropDown) */
-    dropdown,
-    dropdown * {
-      color: #fff;
-    }
+/* Sessions (GtkDropDown) */
+dropdown,
+dropdown * {
+  color: #fff;
+}
 
-    /* fix white-on-white */
-    dropdown>button {
-      background: rgba(255, 255, 255, .16);
-      border: 1px solid rgba(255, 255, 255, .28);
-      border-radius: 12px;
-      padding: 6px 10px;
-    }
+/* fix white-on-white */
+dropdown>button {
+  background: rgba(255, 255, 255, .16);
+  border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: 12px;
+  padding: 6px 10px;
+}
 
-    dropdown>button:hover {
-      background: rgba(255, 255, 255, .20);
-    }
+dropdown>button:hover {
+  background: rgba(255, 255, 255, .20);
+}
 
-    dropdown>button:focus {
-      box-shadow: 0 0 0 2px rgba(255, 255, 255, .15);
-    }
+dropdown>button:focus {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .15);
+}
 
-    /* Dropdown popover menu */
-    popover.menu {
-      background: rgba(18, 18, 18, .95);
-      border-radius: 12px;
-    }
+/* Dropdown popover menu */
+popover.menu {
+  background: rgba(18, 18, 18, .95);
+  border-radius: 12px;
+}
 
-    popover.menu listview {
-      background: transparent;
-    }
+popover.menu listview {
+  background: transparent;
+}
 
-    popover.menu row {
-      color: #fff;
-    }
+popover.menu row {
+  color: #fff;
+}
 
-    popover.menu row:hover,
-    popover.menu row:selected {
-      background: rgba(255, 255, 255, .10);
-      border-radius: 8px;
-    }
+popover.menu row:hover,
+popover.menu row:selected {
+  background: rgba(255, 255, 255, .10);
+  border-radius: 8px;
+}
 
-    /* (Legacy combobox styles kept harmlessly for compatibility) */
-    combobox,
-    list,
-    row {
-      background: transparent;
-      color: #fff;
-      border: none;
-      font-size: 15px;
-    }
+/* (Legacy combobox styles kept harmlessly for compatibility) */
+combobox,
+list,
+row {
+  background: transparent;
+  color: #fff;
+  border: none;
+  font-size: 15px;
+}
 
-    row:hover,
-    row:selected {
-      background: rgba(255, 255, 255, .10);
-      border-radius: 10px;
-    }
+row:hover,
+row:selected {
+  background: rgba(255, 255, 255, .10);
+  border-radius: 10px;
+}
 
-    /* Power row */
-    button.power {
-      background: rgba(255, 255, 255, .14);
-      border: 1px solid rgba(255, 255, 255, .26);
-      color: #fff;
-      border-radius: 12px;
-      padding: 6px 10px;
-      min-width: 40px;
-    }
+/* Power row */
+button.power {
+  background: rgba(255, 255, 255, .14);
+  border: 1px solid rgba(255, 255, 255, .26);
+  color: #fff;
+  border-radius: 12px;
+  padding: 6px 10px;
+  min-width: 40px;
+}
 
-    button.power:hover {
-      background: rgba(255, 255, 255, .20);
-    }
+button.power:hover {
+  background: rgba(255, 255, 255, .20);
+}
 
-    /* Errors */
-    .error {
-      outline: 2px solid rgba(255, 80, 80, .7);
-    }
+/* Errors */
+.error {
+  outline: 2px solid rgba(255, 80, 80, .7);
+}
 
-    /* Center the avatar and lift the panel a bit more */
-    .panel {
-      margin-bottom: 96px;
-    }
+/* Center the avatar and lift the panel a bit more */
+.panel {
+  margin-bottom: 96px;
+}
 
-    .avatar {
-      margin-left: auto;
-      margin-right: auto;
-    }
+.avatar {
+  margin-left: auto;
+  margin-right: auto;
+}
 
-    /* GtkDropDown button — keep dark (closed & opened/pressed) */
-    dropdown>button {
-      background: rgba(255, 255, 255, .16);
-      border: 1px solid rgba(255, 255, 255, .28);
-      border-radius: 12px;
-      padding: 6px 10px;
-      color: #fff;
-    }
+/* GtkDropDown button — keep dark (closed & opened/pressed) */
+dropdown>button {
+  background: rgba(255, 255, 255, .16);
+  border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: 12px;
+  padding: 6px 10px;
+  color: #fff;
+}
 
-    dropdown>button:hover {
-      background: rgba(255, 255, 255, .20);
-    }
+dropdown>button:hover {
+  background: rgba(255, 255, 255, .20);
+}
 
-    dropdown>button:active,
-    dropdown>button:checked,
-    dropdown>button:focus {
-      background: rgba(255, 255, 255, .20);
-      color: #fff;
-    }
+dropdown>button:active,
+dropdown>button:checked,
+dropdown>button:focus {
+  background: rgba(255, 255, 255, .20);
+  color: #fff;
+}
 
-    dropdown>button * {
-      color: #fff;
-    }
+dropdown>button * {
+  color: #fff;
+}
 
-    /* GtkDropDown popover (open menu) — force dark bg + white text */
-    popover,
-    popover.background,
-    popover.menu {
-      background-color: rgba(18, 18, 18, .96);
-      color: #fff;
-      border: 1px solid rgba(255, 255, 255, .20);
-      border-radius: 12px;
-    }
+/* GtkDropDown popover (open menu) — force dark bg + white text */
+popover,
+popover.background,
+popover.menu {
+  background-color: rgba(18, 18, 18, .96);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, .20);
+  border-radius: 12px;
+}
 
-    popover * {
-      color: #fff;
-    }
+popover * {
+  color: #fff;
+}
 
-    /* List inside the popover */
-    popover listview,
-    popover list,
-    popover .list {
-      background: transparent;
-    }
+/* List inside the popover */
+popover listview,
+popover list,
+popover .list {
+  background: transparent;
+}
 
-    popover row {
-      background: transparent;
-      color: #fff;
-      border-radius: 8px;
-    }
+popover row {
+  background: transparent;
+  color: #fff;
+  border-radius: 8px;
+}
 
-    popover row:hover,
-    popover row:selected {
-      background: rgba(255, 255, 255, .12);
-    }
+popover row:hover,
+popover row:selected {
+  background: rgba(255, 255, 255, .12);
+}
 
 
-    /* GtkDropDown popover (open menu) — force dark */
-    dropdown popover,
-    popover.dropdown,
-    dropdown popover > contents,
-    popover.dropdown > contents {
-      background-color: rgba(18, 18, 18, .96);
-      color: #fff;
-      border: 1px solid rgba(255, 255, 255, .20);
-      border-radius: 12px;
-    }
+/* GtkDropDown popover (open menu) — force dark */
+dropdown popover,
+popover.dropdown,
+dropdown popover > contents,
+popover.dropdown > contents {
+  background-color: rgba(18, 18, 18, .96);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, .20);
+  border-radius: 12px;
+}
 
-    /* Ensure all text/icons in the popover are white */
-    dropdown popover *,
-    popover.dropdown * {
-      color: #fff;
-    }
+/* Ensure all text/icons in the popover are white */
+dropdown popover *,
+popover.dropdown * {
+  color: #fff;
+}
 
-    /* Clear light backgrounds inside the popover */
-    dropdown popover scrolledwindow,
-    dropdown popover viewport,
-    dropdown popover listview {
-      background: transparent;
-    }
+/* Clear light backgrounds inside the popover */
+dropdown popover scrolledwindow,
+dropdown popover viewport,
+dropdown popover listview {
+  background: transparent;
+}
 
-    /* Rows styling */
-    dropdown popover listview row {
-      background: transparent;
-      border-radius: 8px;
-    }
+/* Rows styling */
+dropdown popover listview row {
+  background: transparent;
+  border-radius: 8px;
+}
 
-    dropdown popover listview row:hover,
-    dropdown popover listview row:selected {
-      background: rgba(255, 255, 255, .12);
-    }
+dropdown popover listview row:hover,
+dropdown popover listview row:selected {
+  background: rgba(255, 255, 255, .12);
+}
 
-    /* Keep the dropdown button dark when opened */
-    dropdown>button:checked,
-    dropdown>button:active,
-    dropdown>button:focus {
-      background: rgba(255, 255, 255, .20);
-      color: #fff;
-    }
+/* Keep the dropdown button dark when opened */
+dropdown>button:checked,
+dropdown>button:active,
+dropdown>button:focus {
+  background: rgba(255, 255, 255, .20);
+  color: #fff;
+}
 
-    dropdown>button * {
-      color: #fff;
-    }
+dropdown>button * {
+  color: #fff;
+}
 
-    /* Lift panel a touch more from power buttons */
-    .panel {
-      margin-bottom: 96px;
-    }
+/* Lift panel a touch more from power buttons */
+.panel {
+  margin-bottom: 96px;
+}
 
-    /* Circular, centered avatar */
-    .avatar-frame {
-      margin-left: auto;
-      margin-right: auto;
-      border-radius: 9999px;
-      border: 1px solid rgba(255, 255, 255, .28);
-      box-shadow: 0 2px 14px rgba(0, 0, 0, .35);
-    }
+/* Circular, centered avatar */
+.avatar-frame {
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, .28);
+  box-shadow: 0 2px 14px rgba(0, 0, 0, .35);
+}
 
-    /* Avatar circle + centering */
-    .avatar {
-      min-width: 112px;
-      min-height: 112px;
-      margin: 0 auto 12px;
-      border-radius: 9999px;
-      border: 1px solid rgba(255, 255, 255, .28);
-      box-shadow: 0 2px 14px rgba(0, 0, 0, .35);
-    }
+/* Avatar circle + centering */
+.avatar {
+  min-width: 112px;
+  min-height: 112px;
+  margin: 0 auto 12px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, .28);
+  box-shadow: 0 2px 14px rgba(0, 0, 0, .35);
+}
 
-    button.suggested-action {
-      font-size: 20px;
-      font-weight: 700;
-    }
+button.suggested-action {
+  font-size: 20px;
+  font-weight: 700;
+}
 
-    /* center FlowBox children */
-    .userflow flowboxchild {
-      margin-left: auto;
-      margin-right: auto;
-    }
+/* center FlowBox children */
+.userflow flowboxchild {
+  margin-left: auto;
+  margin-right: auto;
+}
 
-    .userflow .userchip {
-      margin-left: auto;
-      margin-right: auto;
-    }
-    """
+.userflow .userchip {
+  margin-left: auto;
+  margin-right: auto;
+}
+"""
 
-        gtk_css = """
-    window, .background {
-        background: rgba(18,18,18,0.35);
-    }
-    box, .panel, .card, .content, grid {
-        /* background: rgba(28,28,28,0.45); */
-        border-radius: 24px;
-        /* padding: 24px; */
-        box-shadow: 0 12px 36px rgba(0,0,0,0.35);
-    }
-    label {
-        color: #ffffff;
-        font-weight: 500;
-        text-shadow: 0 1px 1px rgba(0,0,0,0.4);
-    }
-    entry {
-        border-radius: 18px;
-        /* padding: 10px 14px; */
-        background: rgba(255,255,255,0.18);
-        border: 1px solid rgba(255,255,255,0.35);
-        color: #ffffff;
-    }
-    button {
-        border-radius: 18px;
-        /* padding: 8px 14px; */
-        background: rgba(255,255,255,0.22);
-        border: 1px solid rgba(255,255,255,0.35);
-        color: #ffffff;
-    }
-    """
+    gtk_css = """
+window, .background {
+    background: rgba(18,18,18,0.35);
+}
+box, .panel, .card, .content, grid {
+    /* background: rgba(28,28,28,0.45); */
+    border-radius: 24px;
+    /* padding: 24px; */
+    box-shadow: 0 12px 36px rgba(0,0,0,0.35);
+}
+label {
+    color: #ffffff;
+    font-weight: 500;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.4);
+}
+entry {
+    border-radius: 18px;
+    /* padding: 10px 14px; */
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.35);
+    color: #ffffff;
+}
+button {
+    border-radius: 18px;
+    /* padding: 8px 14px; */
+    background: rgba(255,255,255,0.22);
+    border: 1px solid rgba(255,255,255,0.35);
+    color: #ffffff;
+}
+"""
 
         try:
             os.makedirs("/mnt/etc/greetd", exist_ok=True)
@@ -1630,8 +1631,9 @@ path=/usr/local/bin/slgreeter
             return False
 
         if not await self.run_in_chroot(
-            "mkdir -p /var/lib/greetd && "
-            "chown -R greeter:greeter /var/lib/greetd/.config && "
+            "mkdir -p /var/lib/greetd/.config && "
+            "chown -R greeter:greeter /var/lib/greetd/ && "
+            "chown -R greeter:greeter /etc/greetd/ && "
             f"chown -R {u}:{u} /home/{u}/.config/gtklock && "
             "systemctl daemon-reload && "
             "systemctl disable --now getty@tty2.service 2>/dev/null || true"
