@@ -219,7 +219,8 @@ class T2ArchInstaller(App):
                         # yield Button("KDE (Manual)", id="kde_manual_btn")
                         yield Button("COSMIC", id="cosmic_auto_btn")
                         # yield Button("Sway (Experimental)", id="sway_auto_btn")
-                        yield Button("Niri (Experimental)", id="niri_auto_btn")
+                        yield Button("Niri", id="niri_auto_btn")
+                        yield Button("Niri + DankMaterialShell", id="niridms_auto_btn")
                         yield Static("Hyprland is not supported!")
 
                     with TabPane("Extras", id="extras_tab"):
@@ -451,8 +452,8 @@ class T2ArchInstaller(App):
         elif button_id == "no_de_btn":
             console.write("No desktop environment selected")
             tabs.active = "extras_tab"
-        elif button_id in ["gnome_auto_btn", "gnome_manual_btn", "kde_auto_btn", "kde_manual_btn", "cosmic_auto_btn", "sway_auto_btn", "niri_auto_btn"]:
-            de_type = button_id.split("_", 1)[0] # "gnome"|"kde"|"cosmic"|""|"niri"
+        elif button_id in ["gnome_auto_btn", "gnome_manual_btn", "kde_auto_btn", "kde_manual_btn", "cosmic_auto_btn", "niri_auto_btn", "niridms_auto_btn"]:
+            de_type = button_id.split("_", 1)[0] # "gnome"|"kde"|"cosmic"|""|"niri"|"niridms"
             is_manual = "manual" in button_id
             await self.install_desktop_environment(de_type, is_manual)
         elif button_id == "extras_btn": await self.install_extras()
@@ -718,15 +719,20 @@ class T2ArchInstaller(App):
         self.query_one("#left_panel").focus()
         self.query_one(TabbedContent).active = "packages_tab"
 
-    def check_repo_in_pacman_conf(self, repo_name: str = "arch-mact2") -> tuple[bool, Optional[str]]:
+    def check_repo_in_pacman_conf(self, repo_name: str = "arch-mact2", chroot: bool = False) -> tuple[bool, Optional[str]]:
         """
         Check if a repository exists in /etc/pacman.conf.
+
+        Arguments:
+            repo_name: Name of the repository to check
+            chroot: If True, check /mnt/etc/pacman.conf instead
 
         Returns:
             tuple[bool, Optional[str]]: (exists, server_url)
         """
         try:
-            with open("/etc/pacman.conf", "r", encoding="utf-8") as f:
+            conf_path = "/mnt/etc/pacman.conf" if chroot else "/etc/pacman.conf"
+            with open(conf_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
             in_repo_section = False
@@ -757,63 +763,84 @@ class T2ArchInstaller(App):
         except Exception as e:
             try:
                 console = self.query_one("#console", RichLog)
-                console.write(f"Error reading /etc/pacman.conf: {e}")
+                conf_path = "/mnt/etc/pacman.conf" if chroot else "/etc/pacman.conf"
+                console.write(f"Error reading {conf_path}: {e}")
             except Exception:
-                print(f"Error reading /etc/pacman.conf: {e}", file=sys.stderr)
+                conf_path = "/mnt/etc/pacman.conf" if chroot else "/etc/pacman.conf"
+                print(f"Error reading {conf_path}: {e}", file=sys.stderr)
             return (False, None)
 
-    async def update_repo_in_pacman_conf(self, repo_name: str, server_url: str) -> bool:
+    async def update_repo_in_pacman_conf(self, repo_name: str, server_url: str, chroot: bool = False) -> bool:
         """
         Update the server URL for an existing repository in /etc/pacman.conf.
         If the repository section exists but has no Server line, adds one.
+
+        Arguments:
+            repo_name: Name of the repository
+            server_url: Server URL for the repository
+            chroot: If True, update /mnt/etc/pacman.conf instead
 
         Returns:
             bool: True if successful, False otherwise
         """
         try:
-            with open("/etc/pacman.conf", "r", encoding="utf-8") as f:
+            conf_path = "/mnt/etc/pacman.conf" if chroot else "/etc/pacman.conf"
+            with open(conf_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
             in_repo_section = False
             updated = False
-          
+
             for i, line in enumerate(lines):
                 stripped = line.strip()
+                # Check if we're entering the repository section
                 if stripped == f"[{repo_name}]":
                     in_repo_section = True
                     continue
+
+                # If we're in the repo section and find a Server line
                 if in_repo_section and (stripped.startswith("Server =") or stripped.startswith("Server=")):
+                    # Replace the line with the new server URL
                     lines[i] = f"Server = {server_url}\n"
                     updated = True
                     break
+                # If we hit another section, insert Server line for previous section
                 elif in_repo_section and stripped.startswith("[") and stripped.endswith("]"):
+                    # Insert Server line before the next section (end of our repo section)
                     lines.insert(i, f"Server = {server_url}\n")
                     updated = True
                     break
+
+            # If repository section exists but no Server line found before EOF
             if in_repo_section and not updated:
+                # Repository section exists but no Server line found - append it
                 lines.append(f"Server = {server_url}\n")
                 updated = True
+
             if updated:
-                with open("/etc/pacman.conf", "w", encoding="utf-8") as f:
+                with open(conf_path, "w", encoding="utf-8") as f:
                     f.writelines(lines)
                 return True
             return False
         except Exception as e:
+            # Log the error to the console before returning False
             try:
                 console = self.query_one("#console", RichLog)
-                console.write(f"[ERROR] Failed to update T2 repository URL: {e}")
+                console.write(f"[ERROR] Failed to update repository URL: {e}")
             except Exception:
                 # Fallback to printing if console is not available
-                print(f"[ERROR] Failed to update T2 repository URL: {e}", file=sys.stderr)
+                print(f"[ERROR] Failed to update repository URL: {e}", file=sys.stderr)
             return False
 
     def build_repo_config(self, repo_name: str, server_url: str, sig_level: str = "Never") -> str:
         """
         Build a repository configuration string for pacman.conf.
+
         Arguments:
             repo_name: Name of the repository
             server_url: Server URL for the repository
             sig_level: Signature verification level
+
         Returns:
             str: Formatted repository configuration string
         """
@@ -1159,11 +1186,10 @@ class T2ArchInstaller(App):
     def wm_shared_packages(self) -> list[str]:
         """Packages shared between  and Niri"""
         return [
-            "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk",
-            "pipewire", "pipewire-alsa", "pipewire-pulse", "wireplumber",
-            "wf-recorder", "gvfs", "polkit", "polkit-gnome", "swaync", "swayosd",
+            "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk", "pipewire", "pipewire-alsa", "pipewire-pulse", "pipewire-zeroconf", "wireplumber", "wf-recorder", "gvfs", "ffmpeg",
+            "polkit", "polkit-gnome", "swaync", "swayosd", "otf-font-awesome",
             "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel",
-            "ghostty", "wayvnc", "imv", "brightnessctl", "ranger", "pavucontrol",
+            "ghostty", "wayvnc", "brightnessctl", "ranger", "pavucontrol",
             "network-manager-applet", "swww", "swappy", "mpv", "mpd", "playerctl",
             "copyq", "cliphist", "rofi", "cava", "udiskie", "python-pywal",
             "pulsemixer", "pastel", "gtklock", "gtklock-playerctl-module",
@@ -1197,8 +1223,8 @@ class T2ArchInstaller(App):
             return False
         u = self.username
 
-        if not await self.run_in_chroot("pacman -S --noconfirm --needed greetd weston dbus"):
-            console.write("[ERROR] Failed to install greetd/")
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed greetd weston"):
+            console.write("[ERROR] Failed to install greetd")
             return False
 
         if not await self.run_in_chroot("curl -fsSL https://slsrepo.com/slgreeter -o slgreeter && install -Dm755 slgreeter /usr/local/bin/slgreeter"):
@@ -1215,7 +1241,7 @@ user = "greeter"
 """
         # Sessions visible in gtkgreet
         environments = """\
-dbus-run-session -- niri-session
+niri-session
 """
 
         weston_kiosk_conf = """\
@@ -1486,7 +1512,6 @@ popover row:selected {
   background: rgba(255, 255, 255, .12);
 }
 
-
 /* GtkDropDown popover (open menu) — force dark */
 dropdown popover,
 popover.dropdown,
@@ -1647,6 +1672,53 @@ button {
         console.write("greetd with slgreeter installed and configured on VT2 (with logind backend) successfully!")
         return True
 
+    async def wm_install_greetd_dms_greeter(self) -> bool:
+        """
+        Setup greetd with DMS greeter for Niri.
+        """
+        console = self.query_one("#console", RichLog)
+        console.write("Setting up greetd with DMS greeter...")
+
+        if not self.username:
+            console.write("[ERROR] Username not set; create user first.")
+            return False
+
+        # Configure greetd to use DMS greeter with Niri
+        config_toml = """[terminal]
+vt = 2
+
+[default_session]
+command = "dms-greeter --command niri"
+user = "greeter"
+"""
+
+        override_conf = """[Unit]
+After=systemd-user-sessions.service plymouth-quit.service plymouth-quit-wait.service
+Conflicts=getty@tty2.service
+
+[Service]
+Environment=LIBSEAT_BACKEND=logind
+"""
+
+        if not await self.run_in_chroot(f"install -Dm644 /dev/stdin /etc/greetd/config.toml <<'EOF'\n{config_toml}\nEOF"):
+            console.write("[ERROR] Failed to write greetd config.toml")
+            return False
+
+        if not await self.run_in_chroot(f"install -d /etc/systemd/system/greetd.service.d && install -Dm644 /dev/stdin /etc/systemd/system/greetd.service.d/override.conf <<'EOF'\n{override_conf}\nEOF"):
+            console.write("[ERROR] Failed to write greetd override.conf")
+            return False
+
+        # Disable getty on tty2 and enable greetd
+        if not await self.run_in_chroot("systemctl disable getty@tty2.service 2>/dev/null || true"):
+            console.write("[WARN] Could not disable getty@tty2")
+
+        if not await self.run_in_chroot("systemctl enable greetd.service"):
+            console.write("[ERROR] Failed to enable greetd.service")
+            return False
+
+        console.write("greetd configured with DMS greeter successfully!")
+        return True
+
     async def wm_install_greetd_tuigreet(self) -> bool:
         console = self.query_one("#console", RichLog)
         console.write("Setting up greetd + Tuigreet with safe fallback...")
@@ -1663,8 +1735,8 @@ button {
     user = "greeter"
     """
 
-        environments = """dbus-run-session -- sway
-    dbus-run-session -- niri-session
+        environments = """\
+niri-session
     """
 
         override_conf = """[Unit]
@@ -1727,220 +1799,140 @@ button {
         console.write("greetd installed and configured on VT2 (logind backend) with Tuigreet and agreety fallback (for journal logging) successfully!")
         return True
 
-    async def wm_install_greetd_gtkgreet(self) -> bool:
-        """
-        Run gtkgreet under a minimal Sway on VT2 (no full desktop), then exit Sway
-        after login.
-        """
-        console = self.query_one("#console", RichLog)
-        console.write("Setting up gtkgreet on minimal Sway (VT2)…")
-
-        if not self.username:
-            console.write("[ERROR] Username not set; create user first.")
-            return False
-        u = self.username
-
-        if not await self.run_in_chroot("pacman -S --noconfirm --needed greetd greetd-gtkgreet sway dbus"):
-            console.write("[ERROR] Failed to install greetd/gtkgreet/sway")
-            return False
-
-        config_toml = """[terminal]
-    vt = 2
-
-    [default_session]
-    command = "sway --config /etc/greetd/sway-greeter.conf"
-    user = "greeter"
-    """
-        # Sessions visible in gtkgreet
-        environments = """dbus-run-session -- sway
-    dbus-run-session -- niri-session
-    """
-
-        sway_greeter_conf = """# /etc/greetd/sway-greeter.conf
-    xwayland disable
-    focus_follows_mouse no
-
-    # simple background so it’s not raw black
-    output * bg #101010 solid_color
-
-    # Start the greeter as a layer-shell and exit sway after it finishes
-    exec "gtkgreet -l -s /etc/greetd/gtk.css; swaymsg exit"
-
-    bindsym Mod4+shift+e exec swaynag -t warning -m 'What do you want to do?' -b 'Reboot' 'systemctl reboot' -b 'Shut Down' 'systemctl poweroff'
-
-    """
-
-        override_conf = """[Unit]
-    After=systemd-user-sessions.service plymouth-quit.service plymouth-quit-wait.service
-    Conflicts=getty@tty2.service
-
-    [Service]
-    Environment=LIBSEAT_BACKEND=logind
-    """
-
-        gtk_css = """
-    window, .background {
-        background: rgba(18,18,18,0.35);
-    }
-    box, .panel, .card, .content, grid {
-        /* background: rgba(28,28,28,0.45); */
-        border-radius: 24px;
-        /* padding: 24px; */
-        box-shadow: 0 12px 36px rgba(0,0,0,0.35);
-    }
-    label {
-        color: #ffffff;
-        font-weight: 500;
-        text-shadow: 0 1px 1px rgba(0,0,0,0.4);
-    }
-    entry {
-        border-radius: 18px;
-        /* padding: 10px 14px; */
-        background: rgba(255,255,255,0.18);
-        border: 1px solid rgba(255,255,255,0.35);
-        color: #ffffff;
-    }
-    button {
-        border-radius: 18px;
-        /* padding: 8px 14px; */
-        background: rgba(255,255,255,0.22);
-        border: 1px solid rgba(255,255,255,0.35);
-        color: #ffffff;
-    }
-    """
-
-        try:
-            os.makedirs("/mnt/etc/greetd", exist_ok=True)
-            with open("/mnt/etc/greetd/config.toml", "w", encoding="utf-8", newline="\n") as f:
-                f.write(config_toml)
-            with open("/mnt/etc/greetd/environments", "w", encoding="utf-8", newline="\n") as f:
-                f.write(environments)
-            with open("/mnt/etc/greetd/sway-greeter.conf", "w", encoding="utf-8", newline="\n") as f:
-                f.write(sway_greeter_conf)
-
-            os.makedirs("/mnt/etc/systemd/system/greetd.service.d", exist_ok=True)
-            with open("/mnt/etc/systemd/system/greetd.service.d/override.conf", "w", encoding="utf-8", newline="\n") as f:
-                f.write(override_conf)
-
-            # gtkgreet CSS (greeter user; both GTK3/GTK4)
-            for d in ("/mnt/var/lib/greetd/.config/gtk-3.0", "/mnt/var/lib/greetd/.config/gtk-4.0"):
-                os.makedirs(d, exist_ok=True)
-                with open(os.path.join(d, "gtk.css"), "w", encoding="utf-8", newline="\n") as f:
-                    f.write(gtk_css)
-
-            # gtklock CSS for your user
-            user_css_dir = f"/mnt/home/{u}/.config/gtklock"
-            os.makedirs(user_css_dir, exist_ok=True)
-            with open(os.path.join(user_css_dir, "style.css"), "w", encoding="utf-8", newline="\n") as f:
-                f.write(gtk_css)
-        except Exception as e:
-            console.write(f"[ERROR] Writing greeter files failed: {e}")
-            return False
-
-        if not await self.run_in_chroot(
-            "chown -R greeter:greeter /var/lib/greetd/.config && "
-            f"chown -R {u}:{u} /home/{u}/.config/gtklock && "
-            "systemctl daemon-reload && "
-            "systemctl disable --now getty@tty2.service 2>/dev/null || true"
-        ):
-            console.write("[WARN] Could not finalize permissions or disable getty@tty2")
-
-        if not await self.run_in_chroot("systemctl enable greetd.service"):
-            console.write("[ERROR] Failed to enable greetd.service")
-            return False
-
-        console.write("greetd installed and configured on VT2 (logind backend) with gtkgreet successfully!")
-        return True
-
-    async def install_sway(self) -> bool:
-        console = self.query_one("#console", RichLog)
-        console.write("Installing Sway... This might take a while.")
-
-        packages = " ".join(self.wm_shared_packages() + ["sway", "xorg-xwayland"])
-        if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages}", timeout=1800):
-            console.write("[ERROR] Failed to install Sway packages")
-            return False
-
-        if not self.username:
-            console.write("[ERROR] Username not set; create user first.")
-            return False
-        u = self.username
-
-        if not await self.run_in_chroot(f"mkdir -p /home/{u}/.config/sway"):
-            console.write("[ERROR] Failed to create Sway config directory")
-            return False
-
-        if not await self.run_in_chroot(f"cp /etc/sway/config /home/{u}/.config/sway/config"):
-            console.write("[ERROR] Failed to copy default Sway config")
-            return False
-
-        await self.run_in_chroot(
-            f"chmod 700 /home/{u}/.config || true; "
-            f"chmod 700 /home/{u}/.config/sway || true"
-        )
-
-        additions_cfg = """
-# --- t2archinstall additions ---
-
-# Autostart:
-exec /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1
-exec mako
-exec kanshi
-
-# Key bindings:
-bindsym $mod+Space exec fuzzel
-bindsym $mod+Shift+Backspace exec swaynag -t warning -m 'Exit sway?' -b 'Exit' 'swaymsg exit'
-"""
-        try:
-            config_path = f"/mnt/home/{u}/.config/sway/config"
-            with open(config_path, "a", encoding="utf-8", newline="\n") as f:
-                f.write(additions_cfg)
-        except Exception as e:
-            console.write(f"[ERROR] Appending to Sway config failed: {e}")
-            return False
-
-        if not await self.run_in_chroot(
-            f"chown -R {u}:{u} /home/{u}/.config/sway && "
-            f"chmod 644 /home/{u}/.config/sway/config && "
-            f"chown -R {u}:{u} /home/{u}/.config/ "
-        ):
-            console.write("[WARN] Could not set Sway ownership/permissions")
-
-        if not await self.wm_install_greetd_slgreeter():
-            console.write("[ERROR] Greeter setup failed.")
-            return False
-
-        console.write("Sway installed successfully!")
-        return True
-
     async def install_niri(self) -> bool:
         console = self.query_one("#console", RichLog)
         # console.write("Installing Niri... This might take a while.")
+
+        if not self.username:
+            console.write("[ERROR] Username not set; create user first.")
+            return False
 
         packages = " ".join(self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring"])
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages}", timeout=1800):
             console.write("[ERROR] Failed to install Niri packages")
             return False
 
-        if not self.username:
-            console.write("[ERROR] Username not set; create user first.")
-            return False
-
         if not await self.wm_install_greetd_slgreeter():
             console.write("[ERROR] Greeter setup failed")
             return False
 
+        console.write("Creating Niri configuration...")
+        niri_config_dir = f"/home/{self.username}/.config/niri"
+        niri_config_url = "https://raw.githubusercontent.com/YaLTeR/niri/main/resources/default-config.kdl"
+        create_config_cmd = (
+            f"mkdir -p {niri_config_dir} && "
+            f"curl -fsSL '{niri_config_url}' -o {niri_config_dir}/config.kdl && "
+            f"echo -e '\\nspawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"\\n' >> {niri_config_dir}/config.kdl && "
+            f"chown -R {self.username}:{self.username} {niri_config_dir}"
+        )
+        if not await self.run_in_chroot(create_config_cmd):
+            console.write("[WARN] Failed to create Niri config, continuing...")
+
         console.write("Niri installed successfully!")
+        return True
+
+    async def add_slsrepo_to_chroot(self):
+        """Add the slsrepo repository to pacman inside the chroot environment."""
+        console = self.query_one("#console", RichLog)
+        repo_name = "slsrepo"
+        server_url = "https://arch.slsrepo.com"
+
+        # Check if repository already exists in chroot
+        exists, current_url = self.check_repo_in_pacman_conf(repo_name, chroot=True)
+
+        if exists and current_url is not None and current_url == server_url:
+            console.write(f"slsrepo repository already exists with correct URL. Skipping...")
+            await self.run_in_chroot("pacman -Sy")
+        elif exists and (current_url is None or current_url != server_url):
+            console.write(f"slsrepo repository exists but URL is missing or different. Updating/adding Server line...")
+            if await self.update_repo_in_pacman_conf(repo_name, server_url, chroot=True):
+                console.write(f"slsrepo repository URL updated successfully!")
+                await self.run_in_chroot("pacman -Sy")
+            else:
+                console.write(f"[ERROR] Failed to update slsrepo repository URL.")
+        else:
+            console.write(f"Adding slsrepo repository...")
+            repo_config = self.build_repo_config(repo_name, server_url)
+            await self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf")
+            await self.run_in_chroot("pacman -Sy")
+            console.write("slsrepo repository added to chroot successfully!")
+
+    async def install_niri_with_dms(self) -> bool:
+        """Install Niri with DankMaterialShell (DMS) from slsrepo."""
+        console = self.query_one("#console", RichLog)
+
+        if not self.username:
+            console.write("[ERROR] Username not set; create user first.")
+            return False
+
+        # Add Sl’s Arch Repository to chroot
+        await self.add_slsrepo_to_chroot()
+
+        # Install base packages (Niri + shared WM packages)
+        base_packages = self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring"]
+        packages_str = " ".join(base_packages)
+
+        if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages_str}", timeout=1800):
+            console.write("[ERROR] Failed to install Niri base packages")
+            return False
+
+        # Install DMS, QuickShell, and dependencies from Sl's Arch Repository
+        console.write("Installing DMS, QuickShell, and dependencies from Sl's Arch Repository...")
+        dms_packages = "quickshell-git dms-shell-bin matugen greetd dsearch-git greetd-dms-greeter-git"
+
+        if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {dms_packages}", timeout=600):
+            console.write("[ERROR] Failed to install DMS packages")
+            return False
+
+        if not self.username:
+            console.write("[ERROR] Username not set; create user first.")
+            return False
+
+        if not await self.wm_install_greetd_dms_greeter():
+            console.write("[ERROR] DMS greeter setup failed")
+            return False
+
+        console.write("Creating Niri configuration...")
+        niri_config_dir = f"/home/{self.username}/.config/niri"
+        niri_config_url = "https://raw.githubusercontent.com/YaLTeR/niri/main/resources/default-config.kdl"
+        create_config_cmd = (
+            f"mkdir -p {niri_config_dir} && "
+            f"curl -fsSL '{niri_config_url}' -o {niri_config_dir}/config.kdl && "
+            f"sed -i '/^[[:space:]]*spawn-at-startup[[:space:]]\\+\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
+            f"sed -i '/^[[:space:]]*spawn-at-startup-sh[[:space:]]\\+\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
+            f"sed -i '/^[[:space:]]*command[[:space:]]*\\(=\\|\\)[[:space:]]*\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
+            f"echo -e '\\ninclude \"dms/colors.kdl\"\\ninclude \"dms/layout.kdl\"\\ninclude \"dms/alttab.kdl\"\\ninclude \"dms/binds.kdl\"\\n' >> {niri_config_dir}/config.kdl && "
+            f"chown -R {self.username}:{self.username} {niri_config_dir}"
+        )
+        if not await self.run_in_chroot(create_config_cmd):
+            console.write("[WARN] Failed to create Niri config, continuing...")
+
+        # Enable DMS systemd user service
+        console.write("Enabling DMS systemd user service...")
+        enable_dms_cmd = (
+            f"mkdir -p /home/{self.username}/.config/systemd/user/graphical-session.target.wants && "
+            f"ln -sf /usr/lib/systemd/user/dms.service /home/{self.username}/.config/systemd/user/graphical-session.target.wants/dms.service && "
+            f"chown -R {self.username}:{self.username} /home/{self.username}/.config/systemd"
+        )
+        if not await self.run_in_chroot(enable_dms_cmd):
+            console.write("[ERROR] Failed to enable DMS service")
+            return False
+        console.write("DMS service enabled successfully!")
+        console.write("DMS will now start automatically when you log in.")
+        console.write("Niri with DMS installed successfully!")
         return True
 
     async def install_desktop_environment(self, de_type: str, is_manual: bool):
         """Install the selected desktop environment."""
         console = self.query_one("#console", RichLog)
+
         if de_type == "niri":
-          console.write("Installing Niri... his might take a while.")
+          console.write("Installing Niri... This might take a while.")
+        elif de_type == "niridms":
+          console.write("Installing Niri with DankMaterialShell... This might take a while.")
         else:
           console.write(f"Installing {de_type.upper()}... This might take a while.")
-          
+
         if de_type == "gnome":
             de_commands = [
                             "pacman -S --noconfirm --needed gnome gnome-extra gnome-tweaks gnome-power-manager power-profiles-daemon gdm",
@@ -1957,18 +1949,19 @@ bindsym $mod+Shift+Backspace exec swaynag -t warning -m 'Exit sway?' -b 'Exit' '
                             "pacman -S --noconfirm --needed cosmic",
                             "systemctl enable cosmic-greeter.service"
                           ]
-        if de_type == "sway":
-            ok = await self.install_sway()
-            if ok:
-                self.query_one("#left_panel").focus()
-                self.query_one(TabbedContent).active = "extras_tab"
-            return
         if de_type == "niri":
             ok = await self.install_niri()
             if ok:
                 self.query_one("#left_panel").focus()
                 self.query_one(TabbedContent).active = "extras_tab"
             return
+        if de_type == "niridms":
+            ok = await self.install_niri_with_dms()
+            if ok:
+                self.query_one("#left_panel").focus()
+                self.query_one(TabbedContent).active = "extras_tab"
+            return
+
         for cmd in de_commands:
             if not await self.run_in_chroot(cmd, timeout=1800):
                 console.write(f"[ERROR] {de_type.upper()} installation failed.")
