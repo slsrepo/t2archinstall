@@ -30,6 +30,13 @@ chmod +x t2archinstall.py
 ./t2archinstall.py
 ```
 
+If Arch's Python installation complains about Textual even after you installed it, create a virtual environment and run the script there using these commands:
+```
+python3 -m venv ~
+bin/pip install textual
+bin/python t2archinstall.py
+```
+
 ## Credits
 
 * Inspired by [archinstall](https://github.com/archlinux/archinstall).
@@ -44,4 +51,4 @@ chmod +x t2archinstall.py
 
 ##
 
-© All Rights Reserved, [Sl's Repository Ltd](https://slsrepo.com/), 2025.
+© All Rights Reserved, [Sl's Repository Ltd](https://slsrepo.com/), 2026.
