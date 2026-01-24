@@ -17,6 +17,10 @@ Usage:
   curl -o t2archinstall.py https://github.com/slsrepo/t2archinstall/raw/refs/heads/main/t2archinstall.py
   chmod +x t2archinstall.py
   ./t2archinstall.py
+If it doesn't work:
+    python3 -m venv ~
+    bin/pip install textual
+    bin/python t2archinstall.py
 """
 
 import sys
@@ -28,6 +32,7 @@ import codecs
 import asyncio
 import json
 import re
+import tempfile
 from typing import Optional
 from textual import on
 from textual.app import App, ComposeResult
@@ -110,7 +115,7 @@ class T2ArchInstaller(App):
         ]
 
     def compose(self) -> ComposeResult:
-        yield Header(icon="Λ", name="T2 Arch Linux Installer", show_clock=True)
+        yield Header(icon="^", name="T2 Arch Linux Installer", show_clock=True)
         with Horizontal():
             with Vertical(id="left_panel"):
                 with TabbedContent(id="main_tabs"):
@@ -257,6 +262,8 @@ class T2ArchInstaller(App):
         console.write("Please note that some commands might take a while to run. If anything goes wrong, or you would like to run any additional commands of your own, you can type them below to run them.\n")
         console.write("To begin, enter your disk path in the Start tab :)")
         console.write("=" * 50)
+        if self.disk:
+            await self.run_command(f"lsblk -p {self.disk}")
 
     def action_switch_tab(self, index: int) -> None:
         """Handles key bindings by directly setting the active tab."""
@@ -539,12 +546,100 @@ class T2ArchInstaller(App):
             parts.sort(key=lambda p: p["start"])
             return parts
 
-        def _last_is_linux(p):
-            return p["parttype"] in ("0fc63daf-8483-4772-8e79-3d69d8477de4", "8300") or \
-                p["fstype"]   in ("ext4", "xfs", "btrfs", "f2fs")
+        def _is_partition_empty(kname):
+            """
+            Check if a partition is empty (no files or only filesystem metadata).
+            Returns True if empty, False if has data or cannot be determined.
+            """
+            # Validate kname to ensure it's a valid block device path
+            if not kname or not kname.startswith("/dev/"):
+                return False
+
+            mount_point = None
+            mounted = False
+            try:
+                # Create a secure temporary mount point
+                mount_point = tempfile.mkdtemp(prefix="partition_check_")
+
+                # Try to mount the partition read-only
+                mount_result = subprocess.run(
+                    ["mount", "-o", "ro", kname, mount_point],
+                    capture_output=True,
+                    text=True
+                )
+
+                if mount_result.returncode != 0:
+                    # Cannot mount, assume not empty for safety
+                    return False
+
+                # Mount succeeded
+                mounted = True
+
+                # Check contents
+                contents = os.listdir(mount_point)
+                # Consider filesystem metadata directories that are auto-created
+                metadata_dirs = {"lost+found", "System Volume Information", "$RECYCLE.BIN", ".Trashes"}
+                # Filter out known metadata - if anything else remains, partition has data
+                actual_contents = [item for item in contents if item not in metadata_dirs]
+                is_empty = len(actual_contents) == 0
+
+                return is_empty
+
+            except Exception:
+                # On any error, assume not empty for safety
+                return False
+            finally:
+                # Unmount if mounted
+                if mounted:
+                    subprocess.run(["umount", mount_point], check=False, capture_output=True)
+                # Clean up mount point if it was created
+                if mount_point:
+                    try:
+                        os.rmdir(mount_point)
+                    except Exception:
+                        pass
+
+        def _last_is_safe_to_delete(p):
+            """
+            Check if the last partition is safe to delete.
+            Only allow deletion of empty ExFAT partitions (created in macOS Disk Utility).
+            Never allow deletion of Mac partitions (APFS, HFS+) or partitions with data.
+            Prioritizes avoiding data loss at any cost.
+            """
+            # Check for Mac partition types (should never be deleted)
+            mac_partition_types = (
+                "7c3457ef-0000-11aa-aa11-00306543ecac",  # APFS
+                "48465300-0000-11aa-aa11-00306543ecac",  # HFS+
+            )
+            if p["parttype"] in mac_partition_types:
+                return False
+
+            # Check for Mac filesystems
+            if p["fstype"] in ("apfs", "hfsplus", "hfs"):
+                return False
+
+            # Only allow deletion of ExFAT partitions
+            exfat_partition_type = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"
+            is_exfat = (
+                p["parttype"] == exfat_partition_type or
+                p["fstype"] in ("exfat", "vfat")
+            )
+
+            if not is_exfat:
+                # Not ExFAT - do not delete (includes Linux partitions)
+                return False
+
+            # ExFAT partition - check if it's empty before allowing deletion
+            if not _is_partition_empty(p["kname"]):
+                return False
+
+            return True
 
         existing = _parts()
         auto_mode = "whole" if len(existing) == 0 else "add"
+
+        # Track existing partition names to avoid formatting them later
+        existing_partition_names = {p["kname"] for p in existing}
 
         if auto_mode == "whole":
             console.write("Creating partitions...")
@@ -573,7 +668,7 @@ class T2ArchInstaller(App):
                 append_lines.append("type=linux")
             script = "\n".join(append_lines) + "\n"
 
-            ok = self.run_command(
+            ok = await self.run_command(
                 f"sfdisk --append {self.disk} <<'EOF'\n{script}EOF"
             )
 
@@ -583,8 +678,8 @@ class T2ArchInstaller(App):
                     console.write("[ERROR] No existing partitions; use Whole drive mode.")
                     return
                 last = parts_before[-1]
-                if not _last_is_linux(last):
-                    console.write("[ERROR] Not enough free tail space and last partition is not Linux; refusing to delete.")
+                if not _last_is_safe_to_delete(last):
+                    console.write("[ERROR] Not enough free tail space and last partition is not an empty ExFAT partition; refusing to delete.")
                     return
 
                 # Extract numeric partition index from name (nvme0n1p7 -> 7)
@@ -595,17 +690,34 @@ class T2ArchInstaller(App):
                     console.write("[ERROR] Failed deleting the last partition.")
                     return
 
+                # Update existing_partition_names to reflect the deletion
+                # This allows the deleted partition number to be reused for new partitions
+                existing_partition_names.discard(last["kname"])
+
                 if not await self.run_command(
                     f"sfdisk --append {self.disk} <<'EOF'\n{script}EOF"
                 ):
-                    console.write("[ERROR] Appending partitions failed even after deleting the last Linux partition.")
+                    console.write("[ERROR] Appending partitions failed even after deleting the last empty ExFAT partition.")
                     return
 
         parts_after = _parts()
-        new_set = parts_after[-(3 if include_swap else 2):]
-        efi_part  = new_set[0]["kname"]
-        swap_part = new_set[1]["kname"] if include_swap else ""
-        root_base = new_set[-1]["kname"]
+
+        # Filter to only get newly created partitions (not in the original list)
+        new_partitions = [p for p in parts_after if p["kname"] not in existing_partition_names]
+
+        # Verify we created the expected number of partitions
+        expected_count = 3 if include_swap else 2
+        if len(new_partitions) != expected_count:
+            console.write(f"[ERROR] Expected {expected_count} new partitions but found {len(new_partitions)}.")
+            return
+
+        # Ensure partitions are sorted by start position (should already be, but be explicit)
+        new_partitions.sort(key=lambda p: p["start"])
+
+        # Assign the new partitions (first is EFI, last is root, middle is swap if present)
+        efi_part  = new_partitions[0]["kname"]
+        swap_part = new_partitions[1]["kname"] if include_swap else ""
+        root_base = new_partitions[-1]["kname"]
 
         console.write(f"Creating filesystems with {self.filesystem_type}{' + LVM' if self.use_lvm else ''}...")
 
@@ -663,6 +775,8 @@ class T2ArchInstaller(App):
                 console.write("[ERROR] Mounting failed.")
                 return
         console.write("Partitions mounted successfully!")
+        if self.disk:
+            await self.run_command(f"lsblk -p {self.disk}")
         self.query_one("#left_panel").focus()
         self.query_one(TabbedContent).active = "time_tab"
 
@@ -1901,7 +2015,7 @@ niri-session
             f"sed -i '/^[[:space:]]*spawn-at-startup[[:space:]]\\+\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
             f"sed -i '/^[[:space:]]*spawn-at-startup-sh[[:space:]]\\+\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
             f"sed -i '/^[[:space:]]*command[[:space:]]*\\(=\\|\\)[[:space:]]*\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
-            f"echo -e '\\ninclude \"dms/colors.kdl\"\\ninclude \"dms/layout.kdl\"\\ninclude \"dms/alttab.kdl\"\\ninclude \"dms/binds.kdl\"\\n' >> {niri_config_dir}/config.kdl && "
+            # f"echo -e '\\ninclude \"dms/colors.kdl\"\\ninclude \"dms/layout.kdl\"\\ninclude \"dms/alttab.kdl\"\\ninclude \"dms/binds.kdl\"\\n' >> {niri_config_dir}/config.kdl && "
             f"chown -R {self.username}:{self.username} {niri_config_dir}"
         )
         if not await self.run_in_chroot(create_config_cmd):
