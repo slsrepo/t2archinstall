@@ -262,8 +262,6 @@ class T2ArchInstaller(App):
         console.write("Please note that some commands might take a while to run. If anything goes wrong, or you would like to run any additional commands of your own, you can type them below to run them.\n")
         console.write("To begin, enter your disk path in the Start tab :)")
         console.write("=" * 50)
-        if self.disk:
-            await self.run_command(f"lsblk -p {self.disk}")
 
     def action_switch_tab(self, index: int) -> None:
         """Handles key bindings by directly setting the active tab."""
