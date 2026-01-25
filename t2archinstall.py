@@ -575,10 +575,20 @@ class T2ArchInstaller(App):
 
                 # Check contents
                 contents = os.listdir(mount_point)
-                # Consider filesystem metadata directories that are auto-created
-                metadata_dirs = {"lost+found", "System Volume Information", "$RECYCLE.BIN", ".Trashes"}
+                # Consider filesystem metadata directories/files that are auto-created
+                metadata_items = {
+                    "lost+found",              # ext2/3/4 metadata
+                    "System Volume Information", # Windows metadata
+                    "$RECYCLE.BIN",            # Windows recycle bin
+                    ".Trashes",                # macOS trash
+                    ".fseventsd",              # macOS file system events
+                    ".Spotlight-V100",         # macOS Spotlight indexing
+                    ".TemporaryItems",         # macOS temporary items
+                    ".VolumeIcon.icns",        # macOS volume icon
+                    ".DS_Store",               # macOS Desktop Services Store
+                }
                 # Filter out known metadata - if anything else remains, partition has data
-                actual_contents = [item for item in contents if item not in metadata_dirs]
+                actual_contents = [item for item in contents if item not in metadata_items]
                 is_empty = len(actual_contents) == 0
 
                 return is_empty
