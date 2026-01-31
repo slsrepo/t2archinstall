@@ -1309,10 +1309,10 @@ class T2ArchInstaller(App):
         """Packages shared between  and Niri"""
         return [
             "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk", "pipewire", "pipewire-alsa", "pipewire-pulse", "pipewire-zeroconf", "wireplumber", "wf-recorder", "gvfs", "ffmpeg",
-            "polkit", "polkit-gnome", "swaync", "swayosd", "otf-font-awesome",
+            "polkit", "polkit-gnome", "swaync", "swayosd", "noto-fonts", "ttf-dejavu", "noto-fonts-emoji", "inter-font", "otf-font-awesome",
             "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel",
             "ghostty", "wayvnc", "brightnessctl", "ranger", "pavucontrol",
-            "network-manager-applet", "swww", "swappy", "mpv", "mpd", "playerctl",
+            "network-manager-applet", "swww", "swappy", "mpv", "mpd", "playerctl", "khal",
             "copyq", "cliphist", "rofi", "cava", "udiskie", "python-pywal",
             "pulsemixer", "pastel", "gtklock", "gtklock-playerctl-module",
             "gtklock-powerbar-module", "gtklock-userinfo-module", "wlr-randr", "wtype",
@@ -1841,6 +1841,98 @@ Environment=LIBSEAT_BACKEND=logind
         console.write("greetd configured with DMS greeter successfully!")
         return True
 
+    async def wm_install_greetd_slgreeter_qml(self) -> bool:
+        """
+        Setup greetd with sl-greeter-qml (QML version) for Niri.
+        Downloads and installs from slsrepo.com.
+        """
+        console = self.query_one("#console", RichLog)
+        console.write("Setting up greetd with sl-greeter-qml (QML version)...")
+
+        if not self.username:
+            console.write("[ERROR] Username not set; create user first.")
+            return False
+
+        # Install dependencies: greetd, quickshell, and niri
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed greetd quickshell niri unzip"):
+            console.write("[ERROR] Failed to install required greeter dependencies (greetd, quickshell, niri, unzip)")
+            return False
+
+        # Download and install sl-greeter-qml
+        console.write("Downloading sl-greeter-qml from slsrepo.com...")
+        install_greeter_cmd = (
+            "curl -fsSL https://slsrepo.com/sl-greeter-qml.zip -o sl-greeter-qml.zip && "
+            "if [ -d sl-greeter-qml ]; then rm -rf sl-greeter-qml; fi && "
+            "unzip sl-greeter-qml.zip && "
+            "cp -r sl-greeter-qml /etc/greetd/ && "
+            "cp sl-greeter-qml/niri-greeter.kdl /etc/greetd/ && "
+            "rm -rf sl-greeter-qml sl-greeter-qml.zip"
+        )
+        if not await self.run_in_chroot(install_greeter_cmd, timeout=300):
+            console.write("[ERROR] Failed to install sl-greeter-qml")
+            return False
+
+        # Configure greetd to use sl-greeter-qml with niri
+        config_toml = """[terminal]
+vt = 2
+
+[default_session]
+command = "niri -c /etc/greetd/niri-greeter.kdl"
+user = "greeter"
+"""
+
+        # Create environments file with available sessions
+        environments = """\
+niri-session
+gnome-session
+cosmic-session
+"""
+
+        override_conf = """[Unit]
+After=systemd-user-sessions.service plymouth-quit.service plymouth-quit-wait.service
+Conflicts=getty@tty2.service
+
+[Service]
+Environment=LIBSEAT_BACKEND=logind
+"""
+
+        try:
+            os.makedirs("/mnt/etc/greetd", exist_ok=True)
+            with open("/mnt/etc/greetd/config.toml", "w", encoding="utf-8", newline="\n") as f:
+                f.write(config_toml)
+            with open("/mnt/etc/greetd/environments", "w", encoding="utf-8", newline="\n") as f:
+                f.write(environments)
+
+            os.makedirs("/mnt/etc/systemd/system/greetd.service.d", exist_ok=True)
+            with open("/mnt/etc/systemd/system/greetd.service.d/override.conf", "w", encoding="utf-8", newline="\n") as f:
+                f.write(override_conf)
+        except Exception as e:
+            console.write(f"[ERROR] Writing greeter config files failed: {e}")
+            return False
+
+        # Set up directory structure for user (wallpaper symlink can be created later by user if desired)
+        if not await self.run_in_chroot(
+            f"mkdir -p /home/{self.username}/.local && "
+            f"chown -R {self.username}:{self.username} /home/{self.username}/.local"
+        ):
+            console.write("[WARN] Could not create .local directory")
+
+        if not await self.run_in_chroot(
+            "mkdir -p /var/lib/greetd/.config && "
+            "chown -R greeter:greeter /var/lib/greetd/ && "
+            "chown -R greeter:greeter /etc/greetd/ && "
+            "systemctl daemon-reload && "
+            "systemctl disable --now getty@tty2.service 2>/dev/null || true"
+        ):
+            console.write("[WARN] Could not finalize permissions or disable getty@tty2")
+
+        if not await self.run_in_chroot("systemctl enable greetd.service"):
+            console.write("[ERROR] Failed to enable greetd.service")
+            return False
+
+        console.write("greetd with sl-greeter-qml installed and configured successfully!")
+        return True
+
     async def wm_install_greetd_tuigreet(self) -> bool:
         console = self.query_one("#console", RichLog)
         console.write("Setting up greetd + Tuigreet with safe fallback...")
@@ -1934,18 +2026,42 @@ niri-session
             console.write("[ERROR] Failed to install Niri packages")
             return False
 
-        if not await self.wm_install_greetd_slgreeter():
-            console.write("[ERROR] Greeter setup failed")
+        # Install sl-greeter-qml (QML version)
+        if not await self.wm_install_greetd_slgreeter_qml():
+            console.write("[ERROR] QML Greeter setup failed")
             return False
 
         console.write("Creating Niri configuration...")
         niri_config_dir = f"/home/{self.username}/.config/niri"
         niri_config_url = "https://raw.githubusercontent.com/YaLTeR/niri/main/resources/default-config.kdl"
+
+        # Download and install sl-lock
+        console.write("Downloading and installing sl-lock...")
+        install_lock_cmd = (
+            "rm -rf sl-lock && "
+            "curl -fsSL https://slsrepo.com/sl-lock.zip -o sl-lock.zip && "
+            "unzip sl-lock.zip && "
+            f"mkdir -p /home/{self.username}/.config/quickshell && "
+            f"if [ -d /home/{self.username}/.config/quickshell/sl-lock ]; then "
+            f"mv /home/{self.username}/.config/quickshell/sl-lock "
+            f"/home/{self.username}/.config/quickshell/sl-lock.bak-$(date +%s); "
+            "fi && "
+            f"mv sl-lock /home/{self.username}/.config/quickshell/ && "
+            f"chown -R {self.username}:{self.username} /home/{self.username}/.config/quickshell && "
+            "rm -rf sl-lock sl-lock.zip"
+        )
+        if not await self.run_in_chroot(install_lock_cmd, timeout=300):
+            console.write("[WARN] Failed to install sl-lock, continuing...")
+
+        # Create config, replace alacritty with ghostty, and replace swaylock with sl-lock
         create_config_cmd = (
             f"mkdir -p {niri_config_dir} && "
             f"curl -fsSL '{niri_config_url}' -o {niri_config_dir}/config.kdl && "
+            f"sed -i 's/alacritty/ghostty/g' {niri_config_dir}/config.kdl && "
+            f"sed -i 's/\\<swaylock\\>/qs -c sl-lock/g' {niri_config_dir}/config.kdl && "
+            f"sed -i 's/Screen:\ swaylock/Screen: sl-lock/g' {niri_config_dir}/config.kdl && "
             f"echo -e '\\nspawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"\\n' >> {niri_config_dir}/config.kdl && "
-            f"chown -R {self.username}:{self.username} {niri_config_dir}"
+            f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
         )
         if not await self.run_in_chroot(create_config_cmd):
             console.write("[WARN] Failed to create Niri config, continuing...")
@@ -1991,7 +2107,7 @@ niri-session
         await self.add_slsrepo_to_chroot()
 
         # Install base packages (Niri + shared WM packages)
-        base_packages = self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring"]
+        base_packages = self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring", "fprintd"]
         packages_str = " ".join(base_packages)
 
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages_str}", timeout=1800):
@@ -2006,10 +2122,7 @@ niri-session
             console.write("[ERROR] Failed to install DMS packages")
             return False
 
-        if not self.username:
-            console.write("[ERROR] Username not set; create user first.")
-            return False
-
+        # Use DMS greeter for DankMaterialShell
         if not await self.wm_install_greetd_dms_greeter():
             console.write("[ERROR] DMS greeter setup failed")
             return False
@@ -2017,14 +2130,19 @@ niri-session
         console.write("Creating Niri configuration...")
         niri_config_dir = f"/home/{self.username}/.config/niri"
         niri_config_url = "https://raw.githubusercontent.com/YaLTeR/niri/main/resources/default-config.kdl"
+
+        # Create config, replace alacritty with ghostty, and comment out waybar
+        # Note: DMS already includes its own lock screen, so no need to install sl-lock
         create_config_cmd = (
             f"mkdir -p {niri_config_dir} && "
             f"curl -fsSL '{niri_config_url}' -o {niri_config_dir}/config.kdl && "
+            f"sed -i 's/alacritty/ghostty/g' {niri_config_dir}/config.kdl && "
+
             f"sed -i '/^[[:space:]]*spawn-at-startup[[:space:]]\\+\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
             f"sed -i '/^[[:space:]]*spawn-at-startup-sh[[:space:]]\\+\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
             f"sed -i '/^[[:space:]]*command[[:space:]]*\\(=\\|\\)[[:space:]]*\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
+            f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
             # f"echo -e '\\ninclude \"dms/colors.kdl\"\\ninclude \"dms/layout.kdl\"\\ninclude \"dms/alttab.kdl\"\\ninclude \"dms/binds.kdl\"\\n' >> {niri_config_dir}/config.kdl && "
-            f"chown -R {self.username}:{self.username} {niri_config_dir}"
         )
         if not await self.run_in_chroot(create_config_cmd):
             console.write("[WARN] Failed to create Niri config, continuing...")
@@ -2034,7 +2152,7 @@ niri-session
         enable_dms_cmd = (
             f"mkdir -p /home/{self.username}/.config/systemd/user/graphical-session.target.wants && "
             f"ln -sf /usr/lib/systemd/user/dms.service /home/{self.username}/.config/systemd/user/graphical-session.target.wants/dms.service && "
-            f"chown -R {self.username}:{self.username} /home/{self.username}/.config/systemd"
+            f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
         )
         if not await self.run_in_chroot(enable_dms_cmd):
             console.write("[ERROR] Failed to enable DMS service")
