@@ -80,6 +80,7 @@ class T2ArchInstaller(App):
     Button:hover {
         background: $primary-background;
     }
+
     """
 
     BINDINGS = [
@@ -97,6 +98,7 @@ class T2ArchInstaller(App):
 
     def __init__(self):
         super().__init__()
+        self.post_install_mode = False
         self.disk = ""
         self.partition_mode = "partition_with_swap"
         self.root_partition = ""
@@ -129,6 +131,7 @@ class T2ArchInstaller(App):
                         yield Static("Installation mode:")
                         yield Button("Partition Disk", id="partition_btn")
                         yield Button("Mount Existing", id="mount_btn")
+                        yield Button("Already Installed (Run commands on current system)", id="post_install_btn")
 
                     with TabPane("Partition", id="partition_tab"):
                         yield Static("Choose your preferred filesystem:")
@@ -186,8 +189,8 @@ class T2ArchInstaller(App):
                     with TabPane("System", id="system_tab"):
                         yield Static("Configure the new system.")
                         yield Button("Generate fstab", id="fstab_btn")
-                        yield Button("Add T2 Repository (GitHub) to Chroot", id="chroot_repo_btn")
-                        yield Button("Add T2 Repository (YuruMirror) to Chroot", id="chroot_repo_mirror_btn")
+                        yield Button("Add T2 Repository (GitHub) to Pacman", id="chroot_repo_btn")
+                        yield Button("Add T2 Repository (YuruMirror) to Pacman", id="chroot_repo_mirror_btn")
                         yield Button("Configure Modules & Locale", id="config_basic_btn")
                         yield Static("Hostname:")
                         yield Input(placeholder="Enter hostname", id="hostname_input")
@@ -230,8 +233,10 @@ class T2ArchInstaller(App):
 
                     with TabPane("Extras", id="extras_tab"):
                         yield Static("Install additional (optional) packages and tweaks")
-                        yield Static("These include tiny-dfr (for better TouchBar support), ffmpeg, pipewire, ghostty and fastfetch.")
+                        yield Static("These include ffmpeg, pipewire, ghostty and fastfetch.")
                         yield Button("Install Extra packages", id="extras_btn")
+                        yield Button("Install tiny-dfr (for better TouchBar support)", id="tiny_dfr_btn")
+                        yield Button("Add Sl's Arch Repository to Pacman", id="add_slsrepo_btn")
                         yield Button("T2 TouchBar recurring network notifications fix", id="recurring_network_notifications_fix_btn")
                         yield Static("T2 Suspend solutions:")
                         yield Button("Disable Suspend and Sleep", id="suspend_sleep_btn")
@@ -262,6 +267,13 @@ class T2ArchInstaller(App):
         console.write("Please note that some commands might take a while to run. If anything goes wrong, or you would like to run any additional commands of your own, you can type them below to run them.\n")
         console.write("To begin, enter your disk path in the Start tab :)")
         console.write("=" * 50)
+        try:
+            console.write("Current disks and partitions (lsblk -p):")
+            lsblk_output = subprocess.check_output(["lsblk", "-p"], text=True, timeout=10)
+            for line in lsblk_output.splitlines():
+                console.write(line)
+        except Exception as e:
+            console.write(f"[WARN] Failed to get lsblk output: {e}")
 
     def action_switch_tab(self, index: int) -> None:
         """Handles key bindings by directly setting the active tab."""
@@ -381,9 +393,15 @@ class T2ArchInstaller(App):
             return False
 
     async def run_in_chroot(self, inner_cmd: str, timeout: int = 300) -> bool:
+        if self.post_install_mode:
+            return await self.run_command(inner_cmd, timeout=timeout)
         wrapped_inner = f"stdbuf -oL -eL {inner_cmd}"
         chroot_cmd = f"arch-chroot /mnt bash -lc {shlex.quote(wrapped_inner)}"
         return await self.run_command(chroot_cmd, timeout=timeout)
+
+    def _get_target_root(self) -> str:
+        """Return target root path for direct filesystem writes."""
+        return "/" if self.post_install_mode else "/mnt"
 
     @on(Input.Submitted, "#command_input")
     async def on_input_submitted(self, event: Input.Submitted):
@@ -430,6 +448,10 @@ class T2ArchInstaller(App):
                 tabs.active = "mount_tab"
             else:
                 console.write("[ERROR] Please enter a disk path first")
+        elif button_id == "post_install_btn":
+            self.post_install_mode = True
+            console.write("[WARN] Post-install mode enabled: commands will run on the current system (no arch-chroot).")
+            tabs.active = "time_tab"
         elif button_id == "create_partitions_btn": await self.create_partitions()
         elif button_id == "mount_partitions_btn": await self.mount_partitions()
         elif button_id == "set_timezone_btn": await self.set_timezone()
@@ -462,6 +484,13 @@ class T2ArchInstaller(App):
             is_manual = "manual" in button_id
             await self.install_desktop_environment(de_type, is_manual)
         elif button_id == "extras_btn": await self.install_extras()
+        elif button_id == "tiny_dfr_btn": await self.install_tiny_dfr()
+        elif button_id == "add_slsrepo_btn":
+            if await self.add_slsrepo_to_chroot():
+                self.query_one("#left_panel").focus()
+                self.query_one(TabbedContent).active = "completion_tab"
+            else:
+                self.query_one("#add_slsrepo_btn").focus()
         elif button_id == "recurring_network_notifications_fix_btn": self.recurring_network_notifications_fix()
         elif button_id == "suspend_sleep_btn": await self.disable_suspend_sleep()
         elif button_id == "ignore_lid_btn": await self.ignore_lid_switch()
@@ -832,8 +861,9 @@ class T2ArchInstaller(App):
         console = self.query_one("#console", RichLog)
         self.lang_selected = (self.query_one("#lang_input", Input).value or "en_US.UTF-8").strip()
         try:
-            os.makedirs("/mnt/etc", exist_ok=True)
-            with open("/mnt/etc/vconsole.conf", "w", encoding="utf-8", newline="\n") as f:
+            target_etc = os.path.join(self._get_target_root(), "etc")
+            os.makedirs(target_etc, exist_ok=True)
+            with open(os.path.join(target_etc, "vconsole.conf"), "w", encoding="utf-8", newline="\n") as f:
                 f.write(f"KEYMAP=us\n")
         except Exception as e:
             console.write(f"Could not create vconsole.conf: {e}")
@@ -1027,6 +1057,9 @@ class T2ArchInstaller(App):
     async def install_base_system_auto(self):
         """Install the base system with T2 packages automatically using pacstrap."""
         console = self.query_one("#console", RichLog)
+        if self.post_install_mode:
+            console.write("[WARN] pacstrap is install-only and will be skipped in post-install mode.")
+            return
         packages = "base linux-t2 linux-t2-headers apple-t2-audio-config apple-bcm-firmware linux-firmware iwd networkmanager bluez bluez-utils t2fanrd grub efibootmgr nano sudo git base-devel lvm2 btrfs-progs"
         cmd = f"pacstrap -K /mnt {packages}"
         console.write("Installing base system... This might take a while (10+ minutes)...")
@@ -1040,6 +1073,9 @@ class T2ArchInstaller(App):
     def install_base_system_manual(self):
         """Install the base system with T2 packages manually by exiting the app and showing the pacstrap command."""
         console = self.query_one("#console", RichLog)
+        if self.post_install_mode:
+            console.write("[WARN] Manual pacstrap is install-only and unavailable in post-install mode.")
+            return
         console.write("Exiting the app for manual installation...")
         console.write("Run this command in your terminal:")
         console.write(self.query_one("#pacstrap_cmd").render())
@@ -1049,29 +1085,42 @@ class T2ArchInstaller(App):
     async def generate_fstab(self):
         """Generate /etc/fstab."""
         console = self.query_one("#console", RichLog)
+        if self.post_install_mode:
+            console.write("[WARN] genfstab is install-only and will be skipped in post-install mode.")
+            return
         if await self.run_command("genfstab -U /mnt >> /mnt/etc/fstab"):
             console.write("fstab generated successfully!")
             self.query_one("#chroot_repo_btn").focus()
         else:
             console.write("[ERROR] fstab generation failed")
 
-    async def add_t2_repo_to_chroot(self):
+    async def add_t2_repo_to_chroot(self) -> bool:
         """Add the T2 repository to pacman inside the chroot environment."""
         console = self.query_one("#console", RichLog)
         repo_config = "[arch-mact2]\\nServer = https://github.com/NoaHimesaka1873/arch-mact2-mirror/releases/download/release\\nSigLevel = Never"
-        await self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf")
-        await self.run_in_chroot("pacman -Sy")
-        console.write("T2 repository (GitHub) added to chroot successfully!")
+        if not await self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf"):
+            console.write("[ERROR] Failed to write T2 repository (GitHub) to pacman.conf.")
+            return False
+        if not await self.run_in_chroot("pacman -Sy"):
+            console.write("[ERROR] Failed to refresh pacman databases after adding T2 repository (GitHub).")
+            return False
+        console.write(f"T2 repository (GitHub) added to the system's pacman.conf successfully!")
         self.query_one("#config_basic_btn").focus()
+        return True
 
-    async def add_t2_repo_mirror_to_chroot(self):
+    async def add_t2_repo_mirror_to_chroot(self) -> bool:
         """Add the T2 repository mirror to pacman inside the chroot environment."""
         console = self.query_one("#console", RichLog)
         repo_config = "[arch-mact2]\\nServer = https://mirror.funami.tech/arch-mact2/os/x86_64\\nSigLevel = Never"
-        await self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf")
-        await self.run_in_chroot("pacman -Sy")
-        console.write("T2 repository (YuruMirror) added to chroot successfully!")
+        if not await self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf"):
+            console.write("[ERROR] Failed to write T2 repository (YuruMirror) to pacman.conf.")
+            return False
+        if not await self.run_in_chroot("pacman -Sy"):
+            console.write("[ERROR] Failed to refresh pacman databases after adding T2 repository (YuruMirror).")
+            return False
+        console.write(f"T2 repository (YuruMirror) added to the system's pacman.conf successfully!")
         self.query_one("#config_basic_btn").focus()
+        return True
 
     async def configure_basic_system(self):
         """Configure T2 modules, locale, and time."""
@@ -1238,7 +1287,7 @@ class T2ArchInstaller(App):
             if not await self.run_in_chroot(cmd):
                 console.write("[ERROR] Boot label creation failed")
                 return
-        console.write("Boot icon created successfully!")
+        console.write("Boot label created successfully!")
         self.query_one("#plymouth_btn").focus()
 
     async def install_plymouth(self):
@@ -1306,17 +1355,16 @@ class T2ArchInstaller(App):
         self.query_one("#no_de_btn").focus()
 
     def wm_shared_packages(self) -> list[str]:
-        """Packages shared between  and Niri"""
+        """Packages for window managers (Niri)"""
         return [
             "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk", "pipewire", "pipewire-alsa", "pipewire-pulse", "pipewire-zeroconf", "wireplumber", "wf-recorder", "gvfs", "ffmpeg",
             "polkit", "polkit-gnome", "swaync", "swayosd", "noto-fonts", "ttf-dejavu", "noto-fonts-emoji", "inter-font", "otf-font-awesome",
             "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel",
             "ghostty", "wayvnc", "brightnessctl", "ranger", "pavucontrol",
             "network-manager-applet", "swww", "swappy", "mpv", "mpd", "playerctl", "khal",
-            "copyq", "cliphist", "rofi", "cava", "udiskie", "python-pywal",
-            "pulsemixer", "pastel", "gtklock", "gtklock-playerctl-module",
-            "gtklock-powerbar-module", "gtklock-userinfo-module", "wlr-randr", "wtype",
-            "wlsunset", "dialog", "ddcutil", "power-profiles-daemon", "pamixer", "dgop"
+            "cliphist", "rofi", "cava", "udiskie", "python-pywal", "cups-pk-helper",
+            "pulsemixer", "pastel", "wlr-randr", "wtype", "wlsunset",
+            "dialog", "ddcutil", "power-profiles-daemon", "pamixer", "dgop"
         ]
 
     async def wm_write_user_file(self, username: str, rel_path: str, content: str, overwrite: bool = True) -> bool:
@@ -1332,467 +1380,6 @@ class T2ArchInstaller(App):
             f"chown {username}:{username} '{path}' && chmod 644 '{path}'"
         )
         return await self.run_in_chroot(cmd)
-
-    async def wm_install_greetd_slgreeter(self) -> bool:
-        """
-        Run slgreeter with a minimal Weston config on VT2 and exit it after logging in.
-        """
-        console = self.query_one("#console", RichLog)
-        console.write("Setting up slgreeter with Weston (on VT2)...")
-
-        if not self.username:
-            console.write("[ERROR] Username not set; create user first.")
-            return False
-        u = self.username
-
-        if not await self.run_in_chroot("pacman -S --noconfirm --needed greetd weston"):
-            console.write("[ERROR] Failed to install greetd")
-            return False
-
-        if not await self.run_in_chroot("curl -fsSL https://slsrepo.com/slgreeter -o slgreeter && install -Dm755 slgreeter /usr/local/bin/slgreeter"):
-            console.write("[ERROR] Failed to install slgreeter")
-            return False
-
-        config_toml = """\
-[terminal]
-vt = 2
-
-[default_session]
-command = "weston --config /etc/greetd/weston.ini"
-user = "greeter"
-"""
-        # Sessions visible in gtkgreet
-        environments = """\
-niri-session
-"""
-
-        weston_kiosk_conf = """\
-[core]
-shell=kiosk-shell.so
-idle-time=0
-
-[shell]
-panel-position=none
-
-[autolaunch]
-path=/usr/local/bin/slgreeter
-"""
-
-        override_conf = """[Unit]
-After=systemd-user-sessions.service plymouth-quit.service plymouth-quit-wait.service
-Conflicts=getty@tty2.service
-
-[Service]
-Environment=LIBSEAT_BACKEND=logind
-"""
-
-        slgreeter_css = """\
-window {
-  background: transparent;
-  color: #ffffff;
-  font-family: system-ui, -apple-system, "SF Pro Text", Inter, Cantarell, "Noto Sans", sans-serif;
-}
-
-/* Top */
-label.date {
-  font-size: 18px;
-  font-weight: 600;
-  opacity: .92;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
-}
-
-label.clock {
-  font-size: 120px;
-  font-weight: 700;
-  text-shadow: 0 2px 14px rgba(0, 0, 0, .35);
-}
-
-/* Middle */
-.panel {
-  background: transparent;
-  margin-bottom: 72px;
-}
-
-/* lift above power buttons */
-
-/* User picker */
-.userflow {
-  margin-bottom: 8px;
-}
-
-.userchip {
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, .08);
-  border: 1px solid rgba(255, 255, 255, .18);
-  border-radius: 14px;
-}
-
-.userchip:hover {
-  background: rgba(255, 255, 255, .14);
-}
-
-.userchip:focus,
-.userchip:active {
-  background: rgba(255, 255, 255, .18);
-  outline: 2px solid rgba(255, 255, 255, .35);
-}
-
-.userchip .avatar {
-  margin-bottom: 6px;
-  min-width: 72px;
-  min-height: 72px;
-}
-
-.userchip-label {
-  font-size: 13px;
-  opacity: .95;
-}
-
-/* Avatar + entries */
-.avatar {
-  border-radius: 999px;
-  min-width: 96px;
-  min-height: 96px;
-  margin-bottom: 12px;
-}
-
-entry {
-  min-height: 34px;
-  padding: 7px 12px;
-  font-size: 16px;
-  background: rgba(255, 255, 255, .16);
-  border: 1px solid rgba(255, 255, 255, .28);
-  border-radius: 12px;
-  color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
-}
-
-entry:focus {
-  border-color: rgba(255, 255, 255, .45);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, .15), inset 0 1px 0 rgba(255, 255, 255, .12);
-}
-
-/* Arrow login button */
-button.suggested-action {
-  min-height: 40px;
-  min-width: 40px;
-  border-radius: 999px;
-  padding: 0 14px;
-  background: rgba(255, 255, 255, .22);
-  border: 1px solid rgba(255, 255, 255, .35);
-  color: #fff;
-}
-
-button.suggested-action:hover {
-  background: rgba(255, 255, 255, .28);
-}
-
-button.suggested-action:active {
-  background: rgba(255, 255, 255, .18);
-}
-
-/* Sessions (GtkDropDown) */
-dropdown,
-dropdown * {
-  color: #fff;
-}
-
-/* fix white-on-white */
-dropdown>button {
-  background: rgba(255, 255, 255, .16);
-  border: 1px solid rgba(255, 255, 255, .28);
-  border-radius: 12px;
-  padding: 6px 10px;
-}
-
-dropdown>button:hover {
-  background: rgba(255, 255, 255, .20);
-}
-
-dropdown>button:focus {
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, .15);
-}
-
-/* Dropdown popover menu */
-popover.menu {
-  background: rgba(18, 18, 18, .95);
-  border-radius: 12px;
-}
-
-popover.menu listview {
-  background: transparent;
-}
-
-popover.menu row {
-  color: #fff;
-}
-
-popover.menu row:hover,
-popover.menu row:selected {
-  background: rgba(255, 255, 255, .10);
-  border-radius: 8px;
-}
-
-/* (Legacy combobox styles kept harmlessly for compatibility) */
-combobox,
-list,
-row {
-  background: transparent;
-  color: #fff;
-  border: none;
-  font-size: 15px;
-}
-
-row:hover,
-row:selected {
-  background: rgba(255, 255, 255, .10);
-  border-radius: 10px;
-}
-
-/* Power row */
-button.power {
-  background: rgba(255, 255, 255, .14);
-  border: 1px solid rgba(255, 255, 255, .26);
-  color: #fff;
-  border-radius: 12px;
-  padding: 6px 10px;
-  min-width: 40px;
-}
-
-button.power:hover {
-  background: rgba(255, 255, 255, .20);
-}
-
-/* Errors */
-.error {
-  outline: 2px solid rgba(255, 80, 80, .7);
-}
-
-/* Center the avatar and lift the panel a bit more */
-.panel {
-  margin-bottom: 96px;
-}
-
-.avatar {
-  margin-left: auto;
-  margin-right: auto;
-}
-
-/* GtkDropDown button — keep dark (closed & opened/pressed) */
-dropdown>button {
-  background: rgba(255, 255, 255, .16);
-  border: 1px solid rgba(255, 255, 255, .28);
-  border-radius: 12px;
-  padding: 6px 10px;
-  color: #fff;
-}
-
-dropdown>button:hover {
-  background: rgba(255, 255, 255, .20);
-}
-
-dropdown>button:active,
-dropdown>button:checked,
-dropdown>button:focus {
-  background: rgba(255, 255, 255, .20);
-  color: #fff;
-}
-
-dropdown>button * {
-  color: #fff;
-}
-
-/* GtkDropDown popover (open menu) — force dark bg + white text */
-popover,
-popover.background,
-popover.menu {
-  background-color: rgba(18, 18, 18, .96);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, .20);
-  border-radius: 12px;
-}
-
-popover * {
-  color: #fff;
-}
-
-/* List inside the popover */
-popover listview,
-popover list,
-popover .list {
-  background: transparent;
-}
-
-popover row {
-  background: transparent;
-  color: #fff;
-  border-radius: 8px;
-}
-
-popover row:hover,
-popover row:selected {
-  background: rgba(255, 255, 255, .12);
-}
-
-/* GtkDropDown popover (open menu) — force dark */
-dropdown popover,
-popover.dropdown,
-dropdown popover > contents,
-popover.dropdown > contents {
-  background-color: rgba(18, 18, 18, .96);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, .20);
-  border-radius: 12px;
-}
-
-/* Ensure all text/icons in the popover are white */
-dropdown popover *,
-popover.dropdown * {
-  color: #fff;
-}
-
-/* Clear light backgrounds inside the popover */
-dropdown popover scrolledwindow,
-dropdown popover viewport,
-dropdown popover listview {
-  background: transparent;
-}
-
-/* Rows styling */
-dropdown popover listview row {
-  background: transparent;
-  border-radius: 8px;
-}
-
-dropdown popover listview row:hover,
-dropdown popover listview row:selected {
-  background: rgba(255, 255, 255, .12);
-}
-
-/* Keep the dropdown button dark when opened */
-dropdown>button:checked,
-dropdown>button:active,
-dropdown>button:focus {
-  background: rgba(255, 255, 255, .20);
-  color: #fff;
-}
-
-dropdown>button * {
-  color: #fff;
-}
-
-/* Lift panel a touch more from power buttons */
-.panel {
-  margin-bottom: 96px;
-}
-
-/* Circular, centered avatar */
-.avatar-frame {
-  margin-left: auto;
-  margin-right: auto;
-  border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, .28);
-  box-shadow: 0 2px 14px rgba(0, 0, 0, .35);
-}
-
-/* Avatar circle + centering */
-.avatar {
-  min-width: 112px;
-  min-height: 112px;
-  margin: 0 auto 12px;
-  border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, .28);
-  box-shadow: 0 2px 14px rgba(0, 0, 0, .35);
-}
-
-button.suggested-action {
-  font-size: 20px;
-  font-weight: 700;
-}
-
-/* center FlowBox children */
-.userflow flowboxchild {
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.userflow .userchip {
-  margin-left: auto;
-  margin-right: auto;
-}
-"""
-
-        gtk_css = """\
-window, .background {
-    background: rgba(18,18,18,0.35);
-}
-box, .panel, .card, .content, grid {
-    /* background: rgba(28,28,28,0.45); */
-    border-radius: 24px;
-    /* padding: 24px; */
-    box-shadow: 0 12px 36px rgba(0,0,0,0.35);
-}
-label {
-    color: #ffffff;
-    font-weight: 500;
-    text-shadow: 0 1px 1px rgba(0,0,0,0.4);
-}
-entry {
-    border-radius: 18px;
-    /* padding: 10px 14px; */
-    background: rgba(255,255,255,0.18);
-    border: 1px solid rgba(255,255,255,0.35);
-    color: #ffffff;
-}
-button {
-    border-radius: 18px;
-    /* padding: 8px 14px; */
-    background: rgba(255,255,255,0.22);
-    border: 1px solid rgba(255,255,255,0.35);
-    color: #ffffff;
-}
-"""
-
-        try:
-            os.makedirs("/mnt/etc/greetd", exist_ok=True)
-            with open("/mnt/etc/greetd/config.toml", "w", encoding="utf-8", newline="\n") as f:
-                f.write(config_toml)
-            with open("/mnt/etc/greetd/environments", "w", encoding="utf-8", newline="\n") as f:
-                f.write(environments)
-            with open("/mnt/etc/greetd/weston.ini", "w", encoding="utf-8", newline="\n") as f:
-                f.write(weston_kiosk_conf)
-            with open("/mnt/etc/greetd/slgreeter.css", "w", encoding="utf-8", newline="\n") as f:
-                f.write(slgreeter_css)
-
-            os.makedirs("/mnt/etc/systemd/system/greetd.service.d", exist_ok=True)
-            with open("/mnt/etc/systemd/system/greetd.service.d/override.conf", "w", encoding="utf-8", newline="\n") as f:
-                f.write(override_conf)
-
-            # gtklock CSS for your user
-            user_css_dir = f"/mnt/home/{u}/.config/gtklock"
-            os.makedirs(user_css_dir, exist_ok=True)
-            with open(os.path.join(user_css_dir, "style.css"), "w", encoding="utf-8", newline="\n") as f:
-                f.write(gtk_css)
-        except Exception as e:
-            console.write(f"[ERROR] Writing greeter files failed: {e}")
-            return False
-
-        if not await self.run_in_chroot(
-            "mkdir -p /var/lib/greetd/.config && "
-            "chown -R greeter:greeter /var/lib/greetd/ && "
-            "chown -R greeter:greeter /etc/greetd/ && "
-            f"chown -R {u}:{u} /home/{u}/.config/gtklock && "
-            "systemctl daemon-reload && "
-            "systemctl disable --now getty@tty2.service 2>/dev/null || true"
-        ):
-            console.write("[WARN] Could not finalize permissions or disable getty@tty2")
-
-        if not await self.run_in_chroot("systemctl enable greetd.service"):
-            console.write("[ERROR] Failed to enable greetd.service")
-            return False
-
-        console.write("greetd with slgreeter installed and configured on VT2 (with logind backend) successfully!")
-        return True
 
     async def wm_install_greetd_dms_greeter(self) -> bool:
         """
@@ -1881,13 +1468,6 @@ command = "niri -c /etc/greetd/niri-greeter.kdl"
 user = "greeter"
 """
 
-        # Create environments file with available sessions
-        environments = """\
-niri-session
-gnome-session
-cosmic-session
-"""
-
         override_conf = """[Unit]
 After=systemd-user-sessions.service plymouth-quit.service plymouth-quit-wait.service
 Conflicts=getty@tty2.service
@@ -1897,14 +1477,15 @@ Environment=LIBSEAT_BACKEND=logind
 """
 
         try:
-            os.makedirs("/mnt/etc/greetd", exist_ok=True)
-            with open("/mnt/etc/greetd/config.toml", "w", encoding="utf-8", newline="\n") as f:
+            target_root = self._get_target_root()
+            greetd_dir = os.path.join(target_root, "etc", "greetd")
+            os.makedirs(greetd_dir, exist_ok=True)
+            with open(os.path.join(greetd_dir, "config.toml"), "w", encoding="utf-8", newline="\n") as f:
                 f.write(config_toml)
-            with open("/mnt/etc/greetd/environments", "w", encoding="utf-8", newline="\n") as f:
-                f.write(environments)
 
-            os.makedirs("/mnt/etc/systemd/system/greetd.service.d", exist_ok=True)
-            with open("/mnt/etc/systemd/system/greetd.service.d/override.conf", "w", encoding="utf-8", newline="\n") as f:
+            override_dir = os.path.join(target_root, "etc", "systemd", "system", "greetd.service.d")
+            os.makedirs(override_dir, exist_ok=True)
+            with open(os.path.join(override_dir, "override.conf"), "w", encoding="utf-8", newline="\n") as f:
                 f.write(override_conf)
         except Exception as e:
             console.write(f"[ERROR] Writing greeter config files failed: {e}")
@@ -1981,18 +1562,22 @@ niri-session
     """
 
         try:
-            os.makedirs("/mnt/etc/greetd", exist_ok=True)
-            with open("/mnt/etc/greetd/config.toml", "w", encoding="utf-8", newline="\n") as f:
+            target_root = self._get_target_root()
+            greetd_dir = os.path.join(target_root, "etc", "greetd")
+            os.makedirs(greetd_dir, exist_ok=True)
+            with open(os.path.join(greetd_dir, "config.toml"), "w", encoding="utf-8", newline="\n") as f:
                 f.write(config_toml)
-            with open("/mnt/etc/greetd/environments", "w", encoding="utf-8", newline="\n") as f:
+            with open(os.path.join(greetd_dir, "environments"), "w", encoding="utf-8", newline="\n") as f:
                 f.write(environments)
 
-            os.makedirs("/mnt/etc/systemd/system/greetd.service.d", exist_ok=True)
-            with open("/mnt/etc/systemd/system/greetd.service.d/override.conf", "w", encoding="utf-8", newline="\n") as f:
+            override_dir = os.path.join(target_root, "etc", "systemd", "system", "greetd.service.d")
+            os.makedirs(override_dir, exist_ok=True)
+            with open(os.path.join(override_dir, "override.conf"), "w", encoding="utf-8", newline="\n") as f:
                 f.write(override_conf)
 
-            os.makedirs("/mnt/usr/local/bin", exist_ok=True)
-            with open("/mnt/usr/local/bin/greeter-launch", "w", encoding="utf-8", newline="\n") as f:
+            greeter_launch_dir = os.path.join(target_root, "usr", "local", "bin")
+            os.makedirs(greeter_launch_dir, exist_ok=True)
+            with open(os.path.join(greeter_launch_dir, "greeter-launch"), "w", encoding="utf-8", newline="\n") as f:
                 f.write(greeter_launch)
         except Exception as e:
             console.write(f"[ERROR] Writing greetd/tuigreet files failed: {e}")
@@ -2023,17 +1608,17 @@ niri-session
 
         packages = " ".join(self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring"])
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages}", timeout=1800):
-            console.write("[ERROR] Failed to install Niri packages")
+            console.write("[ERROR] Failed to install Niri packages.")
             return False
 
         # Install sl-greeter-qml (QML version)
         if not await self.wm_install_greetd_slgreeter_qml():
-            console.write("[ERROR] QML Greeter setup failed")
+            console.write("[ERROR] Failed to install sl-greeter.")
             return False
 
         console.write("Creating Niri configuration...")
         niri_config_dir = f"/home/{self.username}/.config/niri"
-        niri_config_url = "https://raw.githubusercontent.com/YaLTeR/niri/main/resources/default-config.kdl"
+        niri_config_url = "https://raw.githubusercontent.com/niri-wm/niri/main/resources/default-config.kdl"
 
         # Download and install sl-lock
         console.write("Downloading and installing sl-lock...")
@@ -2058,8 +1643,8 @@ niri-session
             f"mkdir -p {niri_config_dir} && "
             f"curl -fsSL '{niri_config_url}' -o {niri_config_dir}/config.kdl && "
             f"sed -i 's/alacritty/ghostty/g' {niri_config_dir}/config.kdl && "
+            f"sed -i 's/Screen: swaylock/Screen: sl-lock/g' {niri_config_dir}/config.kdl && "
             f"sed -i 's/\\<swaylock\\>/qs -c sl-lock/g' {niri_config_dir}/config.kdl && "
-            f"sed -i 's/Screen:\ swaylock/Screen: sl-lock/g' {niri_config_dir}/config.kdl && "
             f"echo -e '\\nspawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"\\n' >> {niri_config_dir}/config.kdl && "
             f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
         )
@@ -2069,31 +1654,48 @@ niri-session
         console.write("Niri installed successfully!")
         return True
 
-    async def add_slsrepo_to_chroot(self):
-        """Add the slsrepo repository to pacman inside the chroot environment."""
+    async def add_slsrepo_to_chroot(self) -> bool:
+        """Add the slsrepo repository to pacman.
+
+        Uses chroot (/mnt) during normal install flow and targets the current
+        system directly when post_install_mode is enabled.
+        """
         console = self.query_one("#console", RichLog)
         repo_name = "slsrepo"
         server_url = "https://arch.slsrepo.com"
+        use_chroot = not self.post_install_mode
 
         # Check if repository already exists in chroot
-        exists, current_url = self.check_repo_in_pacman_conf(repo_name, chroot=True)
+        exists, current_url = self.check_repo_in_pacman_conf(repo_name, chroot=use_chroot)
 
         if exists and current_url is not None and current_url == server_url:
             console.write(f"slsrepo repository already exists with correct URL. Skipping...")
-            await self.run_in_chroot("pacman -Sy")
+            if not await self.run_in_chroot("pacman -Sy"):
+                console.write("[ERROR] Failed to refresh pacman databases after slsrepo check.")
+                return False
+            return True
         elif exists and (current_url is None or current_url != server_url):
             console.write(f"slsrepo repository exists but URL is missing or different. Updating/adding Server line...")
-            if await self.update_repo_in_pacman_conf(repo_name, server_url, chroot=True):
+            if await self.update_repo_in_pacman_conf(repo_name, server_url, chroot=use_chroot):
                 console.write(f"slsrepo repository URL updated successfully!")
-                await self.run_in_chroot("pacman -Sy")
+                if not await self.run_in_chroot("pacman -Sy"):
+                    console.write("[ERROR] Failed to refresh pacman databases after slsrepo update.")
+                    return False
+                return True
             else:
                 console.write(f"[ERROR] Failed to update slsrepo repository URL.")
+                return False
         else:
             console.write(f"Adding slsrepo repository...")
             repo_config = self.build_repo_config(repo_name, server_url)
-            await self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf")
-            await self.run_in_chroot("pacman -Sy")
-            console.write("slsrepo repository added to chroot successfully!")
+            if not await self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf"):
+                console.write("[ERROR] Failed to add slsrepo repository to pacman.conf.")
+                return False
+            if not await self.run_in_chroot("pacman -Sy"):
+                console.write("[ERROR] Failed to refresh pacman databases after adding slsrepo.")
+                return False
+            console.write(f"slsrepo repository added to the system's pacman successfully!")
+            return True
 
     async def install_niri_with_dms(self) -> bool:
         """Install Niri with DankMaterialShell (DMS) from slsrepo."""
@@ -2104,7 +1706,9 @@ niri-session
             return False
 
         # Add Sl’s Arch Repository to chroot
-        await self.add_slsrepo_to_chroot()
+        if not await self.add_slsrepo_to_chroot():
+            console.write("[ERROR] Failed to add Sl's Arch Repository")
+            return False
 
         # Install base packages (Niri + shared WM packages)
         base_packages = self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring", "fprintd"]
@@ -2129,7 +1733,7 @@ niri-session
 
         console.write("Creating Niri configuration...")
         niri_config_dir = f"/home/{self.username}/.config/niri"
-        niri_config_url = "https://raw.githubusercontent.com/YaLTeR/niri/main/resources/default-config.kdl"
+        niri_config_url = "https://raw.githubusercontent.com/niri-wm/niri/main/resources/default-config.kdl"
 
         # Create config, replace alacritty with ghostty, and comment out waybar
         # Note: DMS already includes its own lock screen, so no need to install sl-lock
@@ -2182,7 +1786,7 @@ niri-session
         if de_type == "kde":
             de_commands = [
                             "pacman -S --noconfirm --needed plasma kde-applications sddm",
-                            "systemctl enable sddm.service"
+                            "systemctl enable plasmalogin.service"
                           ]
         if de_type == "cosmic":
             de_commands = [
@@ -2214,10 +1818,7 @@ niri-session
         """Install additional packages."""
         console = self.query_one("#console", RichLog)
         commands = [
-                    "pacman -S --noconfirm --needed tiny-dfr ffmpeg pipewire pipewire-zeroconf ghostty fastfetch",
-                    "mkdir -p /etc/tiny-dfr",
-                    "cp /usr/share/tiny-dfr/config.toml /etc/tiny-dfr/config.toml",
-                    "sed -i 's/^MediaLayerDefault[[:space:]]*=[[:space:]]*false/MediaLayerDefault = true/' /etc/tiny-dfr/config.toml",
+                    "pacman -S --noconfirm --needed ffmpeg pipewire pipewire-zeroconf ghostty fastfetch",
                     ]
         console.write("Installing extras...")
         for cmd in commands:
@@ -2225,6 +1826,24 @@ niri-session
                 console.write("[ERROR] Extras installation failed")
                 return
         console.write("Extras installed successfully!")
+        self.query_one("#left_panel").focus()
+        self.query_one(TabbedContent).active = "completion_tab"
+
+    async def install_tiny_dfr(self):
+        """Install tiny-dfr and apply TouchBar defaults."""
+        console = self.query_one("#console", RichLog)
+        commands = [
+                    "pacman -S --noconfirm --needed tiny-dfr",
+                    "mkdir -p /etc/tiny-dfr",
+                    "cp /usr/share/tiny-dfr/config.toml /etc/tiny-dfr/config.toml",
+                    "sed -i 's/^MediaLayerDefault[[:space:]]*=[[:space:]]*false/MediaLayerDefault = true/' /etc/tiny-dfr/config.toml",
+                    ]
+        console.write("Installing tiny-dfr...")
+        for cmd in commands:
+            if not await self.run_in_chroot(cmd, timeout=600):
+                console.write("[ERROR] tiny-dfr installation failed")
+                return
+        console.write("tiny-dfr installed successfully!")
         console.write("tiny-dfr config available in /etc/tiny-dfr/config.toml")
         self.query_one("#left_panel").focus()
         self.query_one(TabbedContent).active = "completion_tab"
@@ -2235,12 +1854,12 @@ niri-session
         commands = [
                     'cat <<EOF | sudo tee /etc/udev/rules.d/99-network-t2-ncm.rules\\nSUBSYSTEM=="net", ACTION=="add", ATTR{address}=="ac:de:48:00:11:22", NAME="t2_ncm"\\nEOF','cat <<EOF | sudo tee /etc/NetworkManager/conf.d/99-network-t2-ncm.conf\\n[main]\\nno-auto-default=t2_ncm\\nEOF'
                     ]
-        console.write("Recurring network notifictions fix running")
+        console.write("Recurring network notifications fix running")
         for cmd in commands:
             if not await self.run_in_chroot(cmd):
                 console.write("[ERROR] Failed to disable the recurring network manager notifications.")
                 return
-        console.write("Recurring network notifictions fix successfully applied!")
+        console.write("Recurring network notifications fix successfully applied!")
 
     async def disable_suspend_sleep(self):
         """Set Suspend and Sleep options to no to disable them completely in sleep.conf."""
@@ -2313,6 +1932,9 @@ WantedBy=sleep.target
     async def unmount_system(self):
         """Unmount filesystems without rebooting."""
         console = self.query_one("#console", RichLog)
+        if self.post_install_mode:
+            console.write("[WARN] Unmount is install-only and will be skipped in post-install mode.")
+            return
         await self.run_command("umount -R /mnt")
         await self.run_command("swapoff -a")
         console.write("Filesystems unmounted. You can now safely power off or reboot.")
@@ -2320,17 +1942,23 @@ WantedBy=sleep.target
     async def reboot_system(self):
         """Unmount and reboot the system."""
         console = self.query_one("#console", RichLog)
-        await self.run_command("umount -R /mnt")
-        await self.run_command("swapoff -a")
-        console.write("Filesystems unmounted. Rebooting now...")
+        if not self.post_install_mode:
+            await self.run_command("umount -R /mnt")
+            await self.run_command("swapoff -a")
+            console.write("Filesystems unmounted. Rebooting now...")
+        else:
+            console.write("Rebooting now...")
         await self.run_command("reboot")
 
     async def shutdown_system(self):
         """Unmount and shutdown the system."""
         console = self.query_one("#console", RichLog)
-        await self.run_command("umount -R /mnt")
-        await self.run_command("swapoff -a")
-        console.write("Filesystems unmounted. Shutting down now...")
+        if not self.post_install_mode:
+            await self.run_command("umount -R /mnt")
+            await self.run_command("swapoff -a")
+            console.write("Filesystems unmounted. Shutting down now...")
+        else:
+            console.write("Shutting down now...")
         await self.run_command("shutdown now")
 
 if __name__ == "__main__":
