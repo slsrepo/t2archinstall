@@ -237,6 +237,7 @@ class T2ArchInstaller(App):
                         yield Button("Install Extra packages", id="extras_btn")
                         yield Button("Install tiny-dfr (for better TouchBar support)", id="tiny_dfr_btn")
                         yield Button("Add Sl's Arch Repository to Pacman", id="add_slsrepo_btn")
+                        yield Button("Enable Hybrid Graphics (iGPU)", id="enable_hybrid_graphics_btn")
                         yield Button("T2 TouchBar recurring network notifications fix", id="recurring_network_notifications_fix_btn")
                         yield Static("T2 Suspend solutions:")
                         yield Button("Disable Suspend and Sleep", id="suspend_sleep_btn")
@@ -491,7 +492,10 @@ class T2ArchInstaller(App):
                 self.query_one(TabbedContent).active = "completion_tab"
             else:
                 self.query_one("#add_slsrepo_btn").focus()
-        elif button_id == "recurring_network_notifications_fix_btn": self.recurring_network_notifications_fix()
+        elif button_id == "enable_hybrid_graphics_btn":
+            await self.enable_hybrid_graphics()
+        elif button_id == "recurring_network_notifications_fix_btn":
+            await self.recurring_network_notifications_fix()
         elif button_id == "suspend_sleep_btn": await self.disable_suspend_sleep()
         elif button_id == "ignore_lid_btn": await self.ignore_lid_switch()
         elif button_id == "suspend_fix_btn": await self.install_suspend_fix()
@@ -1860,6 +1864,20 @@ niri-session
                 console.write("[ERROR] Failed to disable the recurring network manager notifications.")
                 return
         console.write("Recurring network notifications fix successfully applied!")
+
+    async def enable_hybrid_graphics(self):
+        """Enable iGPU by default via apple-gmux force_igd."""
+        console = self.query_one("#console", RichLog)
+        commands = [
+                    "mkdir -p /etc/modprobe.d",
+                    "printf '%s\\n%s\\n' '# Enable the iGPU by default if present' 'options apple-gmux force_igd=y' > /etc/modprobe.d/apple-gmux.conf",
+                    ]
+        console.write("Enabling Hybrid Graphics (iGPU)...")
+        for cmd in commands:
+            if not await self.run_in_chroot(cmd):
+                console.write("[ERROR] Failed to enable Hybrid Graphics (iGPU).")
+                return
+        console.write("Hybrid Graphics (iGPU) enabled in /etc/modprobe.d/apple-gmux.conf!")
 
     async def disable_suspend_sleep(self):
         """Set Suspend and Sleep options to no to disable them completely in sleep.conf."""
