@@ -180,6 +180,7 @@ class T2ArchInstaller(App):
                         yield Static("Start the initial installation:")
                         yield Button("Add the T2 Repository (GitHub)", id="add_repo_btn")
                         yield Button("Add the T2 Repository (YuruMirror)", id="add_repo_mirror_btn")
+                        yield Button("Add the T2 Repository (MiningTcup)", id="add_repo_miningtcup_btn")
                         yield Static("Install the base system and T2 packages")
                         yield Button("Auto Install (in the app)", id="pacstrap_auto_btn")
                         yield Button("Manual Install (will exit the app)", id="pacstrap_manual_btn")
@@ -191,6 +192,7 @@ class T2ArchInstaller(App):
                         yield Button("Generate fstab", id="fstab_btn")
                         yield Button("Add T2 Repository (GitHub) to Pacman", id="chroot_repo_btn")
                         yield Button("Add T2 Repository (YuruMirror) to Pacman", id="chroot_repo_mirror_btn")
+                        yield Button("Add T2 Repository (MiningTcup) to Pacman", id="chroot_repo_miningtcup_btn")
                         yield Button("Configure Modules & Locale", id="config_basic_btn")
                         yield Static("Hostname:")
                         yield Input(placeholder="Enter hostname", id="hostname_input")
@@ -460,11 +462,13 @@ class T2ArchInstaller(App):
         elif button_id == "set_language_btn": await self.set_language()
         elif button_id == "add_repo_btn": await self.add_t2_repository()
         elif button_id == "add_repo_mirror_btn": await self.add_t2_repository_mirror()
+        elif button_id == "add_repo_miningtcup_btn": await self.add_t2_repository_miningtcup()
         elif button_id == "pacstrap_auto_btn": await self.install_base_system_auto()
         elif button_id == "pacstrap_manual_btn": await self.install_base_system_manual()
         elif button_id == "fstab_btn": await self.generate_fstab()
         elif button_id == "chroot_repo_btn": await self.add_t2_repo_to_chroot()
-        elif button_id == "chroot_repo_mirror_btn": self.add_t2_repo_mirror_to_chroot()
+        elif button_id == "chroot_repo_mirror_btn": await self.add_t2_repo_mirror_to_chroot()
+        elif button_id == "chroot_repo_miningtcup_btn": await self.add_t2_repo_miningtcup_to_chroot()
         elif button_id == "config_basic_btn": await self.configure_basic_system()
         elif button_id == "set_hostname_btn": await self.set_hostname()
         elif button_id == "set_root_password_btn": await self.set_root_password()
@@ -926,15 +930,16 @@ class T2ArchInstaller(App):
                 print(f"Error reading {conf_path}: {e}", file=sys.stderr)
             return (False, None)
 
-    async def update_repo_in_pacman_conf(self, repo_name: str, server_url: str, chroot: bool = False) -> bool:
+    async def update_repo_in_pacman_conf(self, repo_name: str, server_url: str, chroot: bool = False, sig_level: str = "Never") -> bool:
         """
         Update the server URL for an existing repository in /etc/pacman.conf.
-        If the repository section exists but has no Server line, adds one.
+        If the repository section exists but has no Server/SigLevel line, adds them.
 
         Arguments:
             repo_name: Name of the repository
             server_url: Server URL for the repository
             chroot: If True, update /mnt/etc/pacman.conf instead
+            sig_level: Signature verification level
 
         Returns:
             bool: True if successful, False otherwise
@@ -945,7 +950,9 @@ class T2ArchInstaller(App):
                 lines = f.readlines()
 
             in_repo_section = False
-            updated = False
+            updated_server = False
+            updated_siglevel = False
+            section_end_index = None
 
             for i, line in enumerate(lines):
                 stripped = line.strip()
@@ -954,30 +961,32 @@ class T2ArchInstaller(App):
                     in_repo_section = True
                     continue
 
+                if in_repo_section and stripped.startswith("[") and stripped.endswith("]"):
+                    section_end_index = i
+                    break
+
                 # If we're in the repo section and find a Server line
                 if in_repo_section and (stripped.startswith("Server =") or stripped.startswith("Server=")):
-                    # Replace the line with the new server URL
                     lines[i] = f"Server = {server_url}\n"
-                    updated = True
-                    break
-                # If we hit another section, insert Server line for previous section
-                elif in_repo_section and stripped.startswith("[") and stripped.endswith("]"):
-                    # Insert Server line before the next section (end of our repo section)
-                    lines.insert(i, f"Server = {server_url}\n")
-                    updated = True
-                    break
+                    updated_server = True
+                elif in_repo_section and (stripped.startswith("SigLevel =") or stripped.startswith("SigLevel=")):
+                    lines[i] = f"SigLevel = {sig_level}\n"
+                    updated_siglevel = True
 
-            # If repository section exists but no Server line found before EOF
-            if in_repo_section and not updated:
-                # Repository section exists but no Server line found - append it
-                lines.append(f"Server = {server_url}\n")
-                updated = True
+            # Repository section doesn't exist
+            if not in_repo_section:
+                return False
 
-            if updated:
-                with open(conf_path, "w", encoding="utf-8") as f:
-                    f.writelines(lines)
-                return True
-            return False
+            insert_index = section_end_index if section_end_index is not None else len(lines)
+            if not updated_server:
+                lines.insert(insert_index, f"Server = {server_url}\n")
+                insert_index += 1
+            if not updated_siglevel:
+                lines.insert(insert_index, f"SigLevel = {sig_level}\n")
+
+            with open(conf_path, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+            return True
         except Exception as e:
             # Log the error to the console before returning False
             try:
@@ -1058,6 +1067,38 @@ class T2ArchInstaller(App):
 
         self.query_one("#pacstrap_auto_btn").focus()
 
+    async def add_t2_repository_miningtcup(self):
+        """Add the T2 repository MiningTcup mirror to pacman."""
+        console = self.query_one("#console", RichLog)
+        repo_name = "arch-mact2"
+        server_url = "https://arch-mact2.miningtcup.me/"
+
+        # Check if repository already exists
+        exists, current_url = self.check_repo_in_pacman_conf(repo_name)
+
+        if exists and current_url is not None and current_url == server_url:
+            console.write("T2 repository already exists with the correct URL. Refreshing configuration...")
+            if await self.update_repo_in_pacman_conf(repo_name, server_url):
+                console.write("T2 repository configuration verified/updated successfully.")
+                await self.run_command("pacman -Sy")
+            else:
+                console.write("[ERROR] Failed to refresh T2 repository configuration.")
+        elif exists and (current_url is None or current_url != server_url):
+            console.write(f"T2 repository exists but URL is different or missing. Updating...")
+            if await self.update_repo_in_pacman_conf(repo_name, server_url):
+                console.write(f"T2 repository URL updated to MiningTcup successfully!")
+                await self.run_command("pacman -Sy")
+            else:
+                console.write(f"[ERROR] Failed to update T2 repository URL.")
+        else:
+            console.write(f"Adding T2 repository (MiningTcup)...")
+            repo_config = self.build_repo_config(repo_name, server_url)
+            await self.run_command(f"echo -e '{repo_config}' >> /etc/pacman.conf")
+            await self.run_command("pacman -Sy")
+            console.write("T2 repository (MiningTcup) added successfully!")
+
+        self.query_one("#pacstrap_auto_btn").focus()
+
     async def install_base_system_auto(self):
         """Install the base system with T2 packages automatically using pacstrap."""
         console = self.query_one("#console", RichLog)
@@ -1123,6 +1164,20 @@ class T2ArchInstaller(App):
             console.write("[ERROR] Failed to refresh pacman databases after adding T2 repository (YuruMirror).")
             return False
         console.write(f"T2 repository (YuruMirror) added to the system's pacman.conf successfully!")
+        self.query_one("#config_basic_btn").focus()
+        return True
+
+    async def add_t2_repo_miningtcup_to_chroot(self) -> bool:
+        """Add the T2 repository MiningTcup mirror to pacman inside the chroot environment."""
+        console = self.query_one("#console", RichLog)
+        repo_config = "[arch-mact2]\\nServer = https://arch-mact2.miningtcup.me/\\nSigLevel = Never"
+        if not await self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf"):
+            console.write("[ERROR] Failed to write T2 repository (MiningTcup) to pacman.conf.")
+            return False
+        if not await self.run_in_chroot("pacman -Sy"):
+            console.write("[ERROR] Failed to refresh pacman databases after adding T2 repository (MiningTcup).")
+            return False
+        console.write(f"T2 repository (MiningTcup) added to the system's pacman.conf successfully!")
         self.query_one("#config_basic_btn").focus()
         return True
 
