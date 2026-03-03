@@ -1071,7 +1071,7 @@ class T2ArchInstaller(App):
         """Add the T2 repository MiningTcup mirror to pacman."""
         console = self.query_one("#console", RichLog)
         repo_name = "arch-mact2"
-        server_url = "https://arch-mact2.miningtcup.me/"
+        server_url = "https://arch-mact2.miningtcup.me/os/x86_64"
 
         # Check if repository already exists
         exists, current_url = self.check_repo_in_pacman_conf(repo_name)
