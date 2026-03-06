@@ -104,8 +104,8 @@ class T2ArchInstaller(App):
         self.root_partition = ""
         self.efi_partition = ""
         self.swap_partition = ""
-        self.use_lvm = True
-        self.filesystem_type = "ext4"
+        self.use_lvm = False
+        self.filesystem_type = "btrfs"
         self.bootloader_type = "grub"
         self.locales_added = []
         self.lang_selected = "en_US.UTF-8"
@@ -136,9 +136,9 @@ class T2ArchInstaller(App):
                     with TabPane("Partition", id="partition_tab"):
                         yield Static("Choose your preferred filesystem:")
                         with RadioSet(id="filesystem_choice"):
-                            yield RadioButton("btrfs", id="btrfs_plain")
+                            yield RadioButton("btrfs", id="btrfs_plain", value=True)
+                            yield RadioButton("ext4 with LVM", id="ext4_lvm")
                             yield RadioButton("ext4 (plain)", id="ext4_plain")
-                            yield RadioButton("ext4 with LVM", id="ext4_lvm", value=True)
                         yield Static("Partitioning will create:")
                         yield Static("• EFI partition (1GB)")
                         yield Static("• Swap partition (4GB, optional)")
@@ -228,7 +228,6 @@ class T2ArchInstaller(App):
                         yield Button("KDE", id="kde_auto_btn")
                         # yield Button("KDE (Manual)", id="kde_manual_btn")
                         yield Button("COSMIC", id="cosmic_auto_btn")
-                        # yield Button("Sway (Experimental)", id="sway_auto_btn")
                         yield Button("Niri", id="niri_auto_btn")
                         yield Button("Niri + DankMaterialShell", id="niridms_auto_btn")
                         yield Static("Hyprland is not supported!")
@@ -398,9 +397,17 @@ class T2ArchInstaller(App):
     async def run_in_chroot(self, inner_cmd: str, timeout: int = 300) -> bool:
         if self.post_install_mode:
             return await self.run_command(inner_cmd, timeout=timeout)
+        if not self._is_chroot_ready():
+            console = self.query_one("#console", RichLog)
+            console.write("[ERROR] Chroot is not ready - run pacstrap first.")
+            return False
         wrapped_inner = f"stdbuf -oL -eL {inner_cmd}"
         chroot_cmd = f"arch-chroot /mnt bash -lc {shlex.quote(wrapped_inner)}"
         return await self.run_command(chroot_cmd, timeout=timeout)
+
+    def _is_chroot_ready(self) -> bool:
+        """Check if the chroot at /mnt has a usable base system."""
+        return os.path.isfile(os.path.join(self._get_target_root(), "usr/bin/bash"))
 
     def _get_target_root(self) -> str:
         """Return target root path for direct filesystem writes."""
@@ -535,8 +542,13 @@ class T2ArchInstaller(App):
     async def cleanup_pacman_lock(self):
         """Clean up pacman lock file on errors."""
         console = self.query_one("#console", RichLog)
-        console.write("Cleaning up pacman lock file...")
-        await self.run_in_chroot("rm -rf /var/lib/pacman/db.lck", timeout=30)
+        lock_path = os.path.join(self._get_target_root(), "var/lib/pacman/db.lck")
+        if os.path.exists(lock_path):
+            console.write("Cleaning up pacman lock file...")
+            try:
+                os.remove(lock_path)
+            except OSError as e:
+                console.write(f"[WARN] Could not remove pacman lock file: {e}")
 
     def detect_partition_suffix(self, disk: str) -> str:
         """Detect if disk uses 'p' suffix for partitions (NVME) or not (SATA/SCSI)."""
@@ -787,6 +799,25 @@ class T2ArchInstaller(App):
         else:
             if self.filesystem_type == "btrfs":
                 if not await self.run_command(f"mkfs.btrfs -f {root_base}"): return
+                # Create subvolumes on a temporary mountpoint to avoid conflicts
+                # if /mnt is already in use from a previous attempt.
+                tmp_mount = tempfile.mkdtemp(prefix="t2arch_btrfs_")
+                mounted = False
+                try:
+                    if not await self.run_command(f"mount {root_base} {tmp_mount}"):
+                        return
+                    mounted = True
+                    for sv in ["@", "@home", "@snapshots", "@log", "@pkg"]:
+                        if not await self.run_command(f"btrfs subvolume create {tmp_mount}/{sv}"):
+                            return
+                finally:
+                    if mounted:
+                        if not await self.run_command(f"umount {tmp_mount}"):
+                            console.write(f"[WARN] Failed to unmount temporary mountpoint {tmp_mount}")
+                    try:
+                        os.rmdir(tmp_mount)
+                    except OSError:
+                        pass
             else:
                 if not await self.run_command(f"mkfs.{self.filesystem_type} {root_base}"): return
             root_final = root_base
@@ -809,12 +840,40 @@ class T2ArchInstaller(App):
         if not all([self.root_partition, self.efi_partition]):
             console.write("[ERROR] Please specify at least the Root and EFI partitions")
             return
+        if self.filesystem_type == "btrfs":
+            btrfs_opts = "rw,noatime,compress=zstd,space_cache=v2"
+            if not await self.run_command(f"mount -o {btrfs_opts},subvol=@ {self.root_partition} /mnt"):
+                console.write("[ERROR] BTRFS root subvolume mount failed.")
+                return
+            if not await self.run_command("mkdir -p /mnt/home /mnt/.snapshots /mnt/var/log /mnt/var/cache/pacman/pkg"):
+                console.write("[ERROR] BTRFS directory creation failed.")
+                await self.run_command("umount /mnt")
+                return
+            subvol_mounts = [
+                (f"mount -o {btrfs_opts},subvol=@home {self.root_partition} /mnt/home", "/mnt/home"),
+                (f"mount -o {btrfs_opts},subvol=@snapshots {self.root_partition} /mnt/.snapshots", "/mnt/.snapshots"),
+                (f"mount -o {btrfs_opts},subvol=@log {self.root_partition} /mnt/var/log", "/mnt/var/log"),
+                (f"mount -o {btrfs_opts},subvol=@pkg {self.root_partition} /mnt/var/cache/pacman/pkg", "/mnt/var/cache/pacman/pkg"),
+            ]
+            mounted = ["/mnt"]
+            for cmd, mountpoint in subvol_mounts:
+                if not await self.run_command(cmd):
+                    console.write("[ERROR] BTRFS subvolume mount failed.")
+                    for mp in reversed(mounted):
+                        if not await self.run_command(f"umount {mp}"):
+                            await self.run_command(f"umount -l {mp}")
+                    return
+                mounted.append(mountpoint)
+        else:
+            if not await self.run_command(f"mount {self.root_partition} /mnt"):
+                console.write("[ERROR] Mounting failed.")
+                return
         commands = [
-                    f"mount {self.root_partition} /mnt",
                     "mkdir -p /mnt/boot/efi",
                     f"mount {self.efi_partition} /mnt/boot/efi",
-                    f"swapon {self.swap_partition}"
                     ]
+        if self.swap_partition:
+            commands.append(f"swapon {self.swap_partition}")
         for cmd in commands:
             if not await self.run_command(cmd):
                 console.write("[ERROR] Mounting failed.")
@@ -1105,7 +1164,7 @@ class T2ArchInstaller(App):
         if self.post_install_mode:
             console.write("[WARN] pacstrap is install-only and will be skipped in post-install mode.")
             return
-        packages = "base linux-t2 linux-t2-headers apple-t2-audio-config apple-bcm-firmware linux-firmware iwd networkmanager bluez bluez-utils t2fanrd grub efibootmgr nano sudo git base-devel lvm2 btrfs-progs"
+        packages = "base linux-t2 linux-t2-headers apple-t2-audio-config apple-bcm-firmware linux-firmware iwd networkmanager bluez bluez-utils bluez-tools t2fanrd grub efibootmgr nano sudo git base-devel lvm2 btrfs-progs"
         cmd = f"pacstrap -K /mnt {packages}"
         console.write("Installing base system... This might take a while (10+ minutes)...")
         if await self.run_command(cmd, timeout=1800):
@@ -1128,16 +1187,112 @@ class T2ArchInstaller(App):
         self.exit()
 
     async def generate_fstab(self):
-        """Generate /etc/fstab."""
+        """Generate /etc/fstab and configure Snapper for BTRFS."""
         console = self.query_one("#console", RichLog)
         if self.post_install_mode:
             console.write("[WARN] genfstab is install-only and will be skipped in post-install mode.")
             return
-        if await self.run_command("genfstab -U /mnt >> /mnt/etc/fstab"):
-            console.write("fstab generated successfully!")
-            self.query_one("#chroot_repo_btn").focus()
-        else:
+        if not await self.run_command("genfstab -U /mnt >> /mnt/etc/fstab"):
             console.write("[ERROR] fstab generation failed")
+            return
+        console.write("fstab generated successfully!")
+        # Configure Snapper only when Btrfs is actually used for the root filesystem.
+        if self.filesystem_type == "btrfs":
+            # Probe the actual root fstype using async subprocess to avoid blocking the TUI.
+            try:
+                probe_cmd = ["arch-chroot", "/mnt", "findmnt", "-n", "-o", "FSTYPE", "/"]
+                probe = await asyncio.create_subprocess_exec(
+                    *probe_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await asyncio.wait_for(probe.communicate(), timeout=10)
+                if probe.returncode != 0:
+                    console.write(f"[WARN] findmnt probe exited with code {probe.returncode}: {stderr.decode().strip()}")
+                    root_fstype = ""
+                else:
+                    root_fstype = stdout.decode().strip().lower()
+            except asyncio.TimeoutError as e:
+                console.write(f"[WARN] Could not probe root filesystem type (timeout): {e}")
+                try:
+                    probe.kill()
+                except ProcessLookupError:
+                    pass
+                except Exception:
+                    pass
+                try:
+                    await asyncio.wait_for(probe.wait(), timeout=5)
+                except Exception:
+                    pass
+                root_fstype = ""
+            except OSError as e:
+                console.write(f"[WARN] Could not probe root filesystem type: {e}")
+                root_fstype = ""
+            if "btrfs" not in root_fstype:
+                console.write("[INFO] Skipping Snapper configuration because the root filesystem is not Btrfs.")
+            else:
+                # Install snapper packages in chroot
+                snapper_pkgs = "snapper btrfs-assistant"
+                console.write(f"Installing snapper packages: {snapper_pkgs}...")
+                if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {snapper_pkgs}"):
+                    console.write("[ERROR] Failed to install snapper packages.")
+                    return
+                # Check if snapper root config already exists to make this idempotent.
+                config_path = os.path.join(self._get_target_root(), "etc/snapper/configs/root")
+                if os.path.exists(config_path):
+                    console.write("[INFO] Snapper root config already exists, skipping create-config.")
+                else:
+                    # snapper create-config creates its own .snapshots subvolume, which conflicts with our pre-existing @snapshots subvolume.
+                    # We must unmount @snapshots, let snapper create its subvol, then replace the snapper-created subvol with our @snapshots mount.
+                    target = self._get_target_root()
+                    snapshots_mount = os.path.join(target, ".snapshots")
+                    await self.run_command(f"umount {snapshots_mount}")
+                    await self.run_command(f"rmdir {snapshots_mount}")
+                    if not await self.run_in_chroot("snapper --no-dbus -c root create-config /"):
+                        console.write("[ERROR] Snapper configuration failed: snapper --no-dbus -c root create-config /")
+                        return
+                    await self.run_command(f"btrfs subvolume delete {snapshots_mount}")
+                    await self.run_command(f"mkdir -p {snapshots_mount}")
+                    btrfs_opts = "rw,noatime,compress=zstd,space_cache=v2"
+                    await self.run_command(f"mount -o {btrfs_opts},subvol=@snapshots {self.root_partition} {snapshots_mount}")
+                # Set cleanup limits
+                limit_overrides = {
+                    "TIMELINE_LIMIT_HOURLY": '"5"',
+                    "TIMELINE_LIMIT_DAILY": '"7"',
+                    "TIMELINE_LIMIT_WEEKLY": '"0"',
+                    "TIMELINE_LIMIT_MONTHLY": '"0"',
+                    "TIMELINE_LIMIT_YEARLY": '"0"',
+                    "NUMBER_LIMIT": '"2-10"',
+                    "NUMBER_LIMIT_IMPORTANT": '"4-10"',
+                }
+                try:
+                    with open(config_path, "r") as f:
+                        lines = f.readlines()
+                    new_lines = []
+                    for line in lines:
+                        replaced = False
+                        for key, val in limit_overrides.items():
+                            if line.startswith(f"{key}="):
+                                new_lines.append(f"{key}={val}\n")
+                                replaced = True
+                                break
+                        if not replaced:
+                            new_lines.append(line)
+                    with open(config_path, "w") as f:
+                        f.writelines(new_lines)
+                    console.write("Snapper cleanup limits configured.")
+                except Exception as e:
+                    console.write(f"[WARN] Could not set snapper cleanup limits: {e}")
+                enable_cmds = [
+                    "systemctl enable snapper-timeline.timer",
+                    "systemctl enable snapper-cleanup.timer",
+                    "systemctl enable snapper-boot.timer",
+                ]
+                for cmd in enable_cmds:
+                    if not await self.run_in_chroot(cmd):
+                        console.write(f"[WARN] Failed to enable: {cmd}")
+                console.write("Snapper BTRFS Snapshots configured and fstab generated successfully!")
+        self.query_one("#chroot_repo_btn").focus()
 
     async def add_t2_repo_to_chroot(self) -> bool:
         """Add the T2 repository to pacman inside the chroot environment."""
@@ -1262,15 +1417,22 @@ class T2ArchInstaller(App):
         """Install and configure GRUB as the bootloader."""
         console = self.query_one("#console", RichLog)
         grub_params = "quiet splash intel_iommu=on iommu=pt pcie_ports=compat"
-        commands = [
-                    f"sed -i 's|GRUB_CMDLINE_LINUX=\".*\"|GRUB_CMDLINE_LINUX=\"{grub_params}\"|' /etc/default/grub",
-                    "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable",
-                    "grub-mkconfig -o /boot/grub/grub.cfg"
-                    ]
-        for cmd in commands:
-            if not await self.run_in_chroot(cmd):
-                console.write("[ERROR] GRUB installation failed")
-                return
+        if not await self.run_in_chroot(f"sed -i 's|GRUB_CMDLINE_LINUX=\".*\"|GRUB_CMDLINE_LINUX=\"{grub_params}\"|' /etc/default/grub"):
+            console.write("[ERROR] GRUB installation failed")
+            return
+        if not await self.run_in_chroot("grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable"):
+            console.write("[ERROR] GRUB installation failed")
+            return
+        if self.filesystem_type == "btrfs":
+            console.write("Installing grub-btrfs for snapshot boot entries...")
+            if not await self.run_in_chroot("pacman -S --noconfirm --needed grub-btrfs inotify-tools"):
+                console.write("[WARN] Failed to install grub-btrfs, skipping.")
+            else:
+                if not await self.run_in_chroot("systemctl enable grub-btrfsd.service"):
+                    console.write("[WARN] Failed to enable grub-btrfsd.service.")
+        if not await self.run_in_chroot("grub-mkconfig -o /boot/grub/grub.cfg"):
+            console.write("[ERROR] GRUB installation failed")
+            return
         console.write("GRUB installed successfully!")
         self.query_one("#boot_icon_btn").focus()
 
@@ -1285,30 +1447,22 @@ class T2ArchInstaller(App):
             return
 
         kernel_params = "rw quiet splash intel_iommu=on iommu=pt pcie_ports=compat"
+        if self.filesystem_type == "btrfs":
+            kernel_params += " rootflags=subvol=@"
         root_part = "root=/dev/vg0/root" if self.use_lvm else f"root={self.root_partition}"
 
-        cmd = f"""
-    install -d /boot/efi/loader/entries
-
-    # Copy kernel and initramfs to the ESP so UEFI can read them directly
-    install -Dm0644 /boot/vmlinuz-linux-t2 /boot/efi/vmlinuz-linux-t2
-    install -Dm0644 /boot/initramfs-linux-t2.img /boot/efi/initramfs-linux-t2.img
-    [ -f /boot/initramfs-linux-t2-fallback.img ] && install -Dm0644 /boot/initramfs-linux-t2-fallback.img /boot/efi/initramfs-linux-t2-fallback.img || true
-
-    # loader.conf
-    printf '%s\\n' 'default arch.conf' 'timeout 3' > /boot/efi/loader/loader.conf
-
-    # entry
-    cat > /boot/efi/loader/entries/arch.conf << 'EOF'
-    title   Arch Linux T2
-    linux   /vmlinuz-linux-t2
-    initrd  /initramfs-linux-t2.img
-    options {root_part} {kernel_params}
-    EOF
-    """
-        if not await self.run_in_chroot(cmd):
-            console.write("[ERROR] Failed to finalize systemd-boot configuration")
-            return
+        commands = [
+            "install -d /boot/efi/loader/entries",
+            "install -Dm0644 /boot/vmlinuz-linux-t2 /boot/efi/vmlinuz-linux-t2",
+            "install -Dm0644 /boot/initramfs-linux-t2.img /boot/efi/initramfs-linux-t2.img",
+            "[ -f /boot/initramfs-linux-t2-fallback.img ] && install -Dm0644 /boot/initramfs-linux-t2-fallback.img /boot/efi/initramfs-linux-t2-fallback.img || true",
+            "printf '%s\\n' 'default arch.conf' 'timeout 3' > /boot/efi/loader/loader.conf",
+            f"printf '%s\\n' 'title   Arch Linux T2' 'linux   /vmlinuz-linux-t2' 'initrd  /initramfs-linux-t2.img' 'options {root_part} {kernel_params}' > /boot/efi/loader/entries/arch.conf",
+        ]
+        for cmd in commands:
+            if not await self.run_in_chroot(cmd):
+                console.write("[ERROR] Failed to finalize systemd-boot configuration")
+                return
 
         console.write("systemd-boot installed successfully!")
         self.query_one("#boot_icon_btn").focus()
@@ -1376,6 +1530,14 @@ class T2ArchInstaller(App):
         console.write("Rebuilding initramfs to add Plymouth (This might take a while)...")
         if await self.run_in_chroot("mkinitcpio -P", timeout=600):
             console.write("Plymouth installed and initramfs rebuilt successfully!")
+            # Refresh systemd-boot's copy of the kernel/initramfs so the Plymouth hook is included at boot.
+            if self.bootloader_type == "systemd-boot":
+                console.write("Updating kernel/initramfs on ESP for systemd-boot...")
+                if not await self.run_in_chroot("install -Dm0644 /boot/vmlinuz-linux-t2 /boot/efi/vmlinuz-linux-t2"):
+                    console.write("[WARN] Failed to update kernel on ESP")
+                if not await self.run_in_chroot("install -Dm0644 /boot/initramfs-linux-t2.img /boot/efi/initramfs-linux-t2.img"):
+                    console.write("[WARN] Failed to update initramfs on ESP")
+                await self.run_in_chroot("[ -f /boot/initramfs-linux-t2-fallback.img ] && install -Dm0644 /boot/initramfs-linux-t2-fallback.img /boot/efi/initramfs-linux-t2-fallback.img || true")
             self.query_one("#left_panel").focus()
             self.query_one(TabbedContent).active = "desktop_tab"
         else:
@@ -1416,14 +1578,13 @@ class T2ArchInstaller(App):
     def wm_shared_packages(self) -> list[str]:
         """Packages for window managers (Niri)"""
         return [
-            "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk", "pipewire", "pipewire-alsa", "pipewire-pulse", "pipewire-zeroconf", "wireplumber", "wf-recorder", "gvfs", "ffmpeg",
+            "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk",
+            "pipewire", "pipewire-alsa", "pipewire-pulse", "pipewire-zeroconf", "wireplumber", "gvfs", "ffmpeg",
             "polkit", "polkit-gnome", "swaync", "swayosd", "noto-fonts", "ttf-dejavu", "noto-fonts-emoji", "inter-font", "otf-font-awesome",
-            "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel",
-            "ghostty", "wayvnc", "brightnessctl", "ranger", "pavucontrol",
-            "network-manager-applet", "swww", "swappy", "mpv", "mpd", "playerctl", "khal",
-            "cliphist", "rofi", "cava", "udiskie", "python-pywal", "cups-pk-helper",
-            "pulsemixer", "pastel", "wlr-randr", "wtype", "wlsunset",
-            "dialog", "ddcutil", "power-profiles-daemon", "pamixer", "dgop"
+            "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel", "ghostty", "wayvnc", "jq", "brightnessctl", "ranger",
+            "pavucontrol", "pamixer", "pulsemixer", "swww", "swappy", "satty", "kimageformats", "wf-recorder", "mpv", "mpd", "playerctl", "cava",
+            "cliphist", "udiskie", "cups-pk-helper", "network-manager-applet", "khal", "python-pywal", "pastel", "matugen",
+            "wlr-randr", "wtype", "wlsunset", "dialog", "ddcutil", "i2c-tools", "power-profiles-daemon", "dgop"
         ]
 
     async def wm_write_user_file(self, username: str, rel_path: str, content: str, overwrite: bool = True) -> bool:
@@ -1523,7 +1684,7 @@ Environment=LIBSEAT_BACKEND=logind
 vt = 2
 
 [default_session]
-command = "niri -c /etc/greetd/niri-greeter.kdl"
+command = "niri -c /etc/greetd/niri-greeter.kdl > /dev/null 2>&1"
 user = "greeter"
 """
 
@@ -1703,7 +1864,7 @@ niri-session
             f"curl -fsSL '{niri_config_url}' -o {niri_config_dir}/config.kdl && "
             f"sed -i 's/alacritty/ghostty/g' {niri_config_dir}/config.kdl && "
             f"sed -i 's/Screen: swaylock/Screen: sl-lock/g' {niri_config_dir}/config.kdl && "
-            f"sed -i 's/\\<swaylock\\>/qs -c sl-lock/g' {niri_config_dir}/config.kdl && "
+            f"sed -i 's/spawn \"swaylock\"/spawn-sh \"qs -c sl-lock\"/g' {niri_config_dir}/config.kdl && "
             f"echo -e '\\nspawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"\\n' >> {niri_config_dir}/config.kdl && "
             f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
         )
@@ -1714,14 +1875,10 @@ niri-session
         return True
 
     async def add_slsrepo_to_chroot(self) -> bool:
-        """Add the slsrepo repository to pacman.
-
-        Uses chroot (/mnt) during normal install flow and targets the current
-        system directly when post_install_mode is enabled.
-        """
+        """Add the slsrepo repository to pacman."""
         console = self.query_one("#console", RichLog)
         repo_name = "slsrepo"
-        server_url = "https://arch.slsrepo.com"
+        server_url = "https://arch.slsrepo.com/$arch"
         use_chroot = not self.post_install_mode
 
         # Check if repository already exists in chroot
@@ -1770,7 +1927,7 @@ niri-session
             return False
 
         # Install base packages (Niri + shared WM packages)
-        base_packages = self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring", "fprintd"]
+        base_packages = self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring", "fprintd", "qt6-multimedia"]
         packages_str = " ".join(base_packages)
 
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages_str}", timeout=1800):
@@ -1813,8 +1970,8 @@ niri-session
         # Enable DMS systemd user service
         console.write("Enabling DMS systemd user service...")
         enable_dms_cmd = (
-            f"mkdir -p /home/{self.username}/.config/systemd/user/graphical-session.target.wants && "
-            f"ln -sf /usr/lib/systemd/user/dms.service /home/{self.username}/.config/systemd/user/graphical-session.target.wants/dms.service && "
+            f"mkdir -p /home/{self.username}/.config/systemd/user/niri.service.wants && "
+            f"ln -sf /usr/lib/systemd/user/dms.service /home/{self.username}/.config/systemd/user/niri.service.wants/dms.service && "
             f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
         )
         if not await self.run_in_chroot(enable_dms_cmd):
@@ -1879,6 +2036,8 @@ niri-session
         commands = [
                     "pacman -S --noconfirm --needed ffmpeg pipewire pipewire-zeroconf ghostty fastfetch",
                     ]
+        if self.filesystem_type == "btrfs":
+            commands.append("pacman -S --noconfirm --needed snap-pac")
         console.write("Installing extras...")
         for cmd in commands:
             if not await self.run_in_chroot(cmd, timeout=600):
