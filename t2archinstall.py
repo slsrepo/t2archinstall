@@ -36,7 +36,7 @@ import tempfile
 from typing import Optional
 from textual import on
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Button, Header, Footer, Static, Input, RichLog, TabbedContent, TabPane, RadioSet, RadioButton
 
 class T2ArchInstaller(App):
@@ -81,6 +81,10 @@ class T2ArchInstaller(App):
         background: $primary-background;
     }
 
+    .post-install-scroll {
+        height: 1fr;
+        scrollbar-gutter: stable;
+    }
     """
 
     BINDINGS = [
@@ -122,144 +126,151 @@ class T2ArchInstaller(App):
             with Vertical(id="left_panel"):
                 with TabbedContent(id="main_tabs"):
                     with TabPane("Start", id="start_tab"):
-                        yield Static("Welcome to the T2 Arch Linux Installer!")
-                        yield Static("")
-                        yield Static("Start by entering the disk you want to use below, follow the steps and read the log on the right :)")
-                        yield Static("")
-                        yield Static("Target disk (e.g. /dev/nvme0n1 or /dev/sda):")
-                        yield Input(placeholder="Enter disk path", id="disk_input")
-                        yield Static("Installation mode:")
-                        yield Button("Partition Disk", id="partition_btn")
-                        yield Button("Mount Existing", id="mount_btn")
-                        yield Button("Already Installed (Run commands on current system)", id="post_install_btn")
+                        with VerticalScroll(id="start_scroll", can_focus=False):
+                            yield Static("Welcome to the T2 Arch Linux Installer!")
+                            yield Static("")
+                            yield Static("Start by entering the disk you want to use below, follow the steps and read the log on the right :)")
+                            yield Static("")
+                            yield Static("Target disk (e.g. /dev/nvme0n1 or /dev/sda):")
+                            yield Input(placeholder="Enter disk path", id="disk_input")
+                            yield Static("Installation mode:")
+                            yield Button("Partition Disk", id="partition_btn")
+                            yield Button("Mount Existing", id="mount_btn")
+                            yield Button("Already Installed (Run commands on current system)", id="post_install_btn")
 
                     with TabPane("Partition", id="partition_tab"):
-                        yield Static("Choose your preferred filesystem:")
-                        with RadioSet(id="filesystem_choice"):
-                            yield RadioButton("btrfs", id="btrfs_plain", value=True)
-                            yield RadioButton("ext4 with LVM", id="ext4_lvm")
-                            yield RadioButton("ext4 (plain)", id="ext4_plain")
-                        yield Static("Partitioning will create:")
-                        yield Static("• EFI partition (1GB)")
-                        yield Static("• Swap partition (4GB, optional)")
-                        yield Static("• Root partition (remaining)")
-                        with RadioSet(id="partition_mode"):
-                            yield RadioButton("Create partitions", id="partition_without_swap")
-                            yield RadioButton("Create partitions, with swap", id="partition_with_swap", value=True)
-                        yield Static("", id="partition_info")
-                        yield Button("Create Partitions", id="create_partitions_btn")
+                        with VerticalScroll(id="partition_scroll", can_focus=False):
+                            yield Static("Choose your preferred filesystem:")
+                            with RadioSet(id="filesystem_choice"):
+                                yield RadioButton("btrfs", id="btrfs_plain", value=True)
+                                yield RadioButton("ext4 with LVM", id="ext4_lvm")
+                                yield RadioButton("ext4 (plain)", id="ext4_plain")
+                            yield Static("Partitioning will create:")
+                            yield Static("• EFI partition (1GB)")
+                            yield Static("• Swap partition (4GB, optional)")
+                            yield Static("• Root partition (remaining)")
+                            with RadioSet(id="partition_mode"):
+                                yield RadioButton("Create partitions", id="partition_without_swap")
+                                yield RadioButton("Create partitions, with swap", id="partition_with_swap", value=True)
+                            yield Static("", id="partition_info")
+                            yield Button("Create Partitions", id="create_partitions_btn")
 
                     with TabPane("Mount", id="mount_tab"):
-                        yield Static("Check the available partitions in the console and fill your preferences here:")
-                        yield Static("")
-                        yield Static("Root partition:")
-                        yield Input(placeholder="e.g. /dev/nvme0n1p3 or /dev/sda3", id="root_input")
-                        yield Static("EFI partition:")
-                        yield Input(placeholder="e.g. /dev/nvme0n1p1 or /dev/sda1", id="efi_input")
-                        yield Static("Swap partition:")
-                        yield Input(placeholder="e.g. /dev/nvme0n1p2 or /dev/sda2", id="swap_input")
-                        yield Button("Mount Partitions", id="mount_partitions_btn")
+                        with VerticalScroll(id="mount_scroll", can_focus=False):
+                            yield Static("Check the available partitions in the console and fill your preferences here:")
+                            yield Static("")
+                            yield Static("Root partition:")
+                            yield Input(placeholder="e.g. /dev/nvme0n1p3 or /dev/sda3", id="root_input")
+                            yield Static("EFI partition:")
+                            yield Input(placeholder="e.g. /dev/nvme0n1p1 or /dev/sda1", id="efi_input")
+                            yield Static("Swap partition:")
+                            yield Input(placeholder="e.g. /dev/nvme0n1p2 or /dev/sda2", id="swap_input")
+                            yield Button("Mount Partitions", id="mount_partitions_btn")
 
                     with TabPane("Locale", id="time_tab"):
-                        yield Static("Configure the system timezone:")
-                        yield Static("")
-                        yield Static("Timezone (e.g. America/New_York):")
-                        yield Input(placeholder="Enter timezone", id="timezone_input")
-                        yield Button("Set Timezone", id="set_timezone_btn")
-                        yield Static("Configure the system locale and language:")
-                        yield Static("")
-                        yield Static("Available: en_US.UTF-8", id="locales_available")
-                        yield Static("Additional locales (space/comma separated):")
-                        yield Input(placeholder="en_GB.UTF-8 en_AU.UTF-8", id="locales_input")
-                        yield Button("Add Locales", id="add_locales_btn")
-                        yield Static("System language:")
-                        yield Input(value="en_US.UTF-8", id="lang_input")
-                        yield Button("Set Language", id="set_language_btn")
+                        with VerticalScroll(id="time_scroll", can_focus=False):
+                            yield Static("Configure the system timezone:")
+                            yield Static("")
+                            yield Static("Timezone (e.g. America/New_York):")
+                            yield Input(placeholder="Enter timezone", id="timezone_input")
+                            yield Button("Set Timezone", id="set_timezone_btn")
+                            yield Static("Configure the system locale and language:")
+                            yield Static("")
+                            yield Static("Available: en_US.UTF-8", id="locales_available")
+                            yield Static("Additional locales (space/comma separated):")
+                            yield Input(placeholder="en_GB.UTF-8 en_AU.UTF-8", id="locales_input")
+                            yield Button("Add Locales", id="add_locales_btn")
+                            yield Static("System language:")
+                            yield Input(value="en_US.UTF-8", id="lang_input")
+                            yield Button("Set Language", id="set_language_btn")
 
                     with TabPane("Setup", id="packages_tab"):
-                        yield Static("Start the initial installation:")
-                        yield Button("Add the T2 Repository (GitHub)", id="add_repo_btn")
-                        yield Button("Add the T2 Repository (YuruMirror)", id="add_repo_mirror_btn")
-                        yield Button("Add the T2 Repository (MiningTcup)", id="add_repo_miningtcup_btn")
-                        yield Static("Install the base system and T2 packages")
-                        yield Button("Auto Install (in the app)", id="pacstrap_auto_btn")
-                        yield Button("Manual Install (will exit the app)", id="pacstrap_manual_btn")
-                        yield Static("Manual command:")
-                        yield Static("pacstrap -K /mnt base linux-t2 linux-t2-headers apple-t2-audio-config apple-bcm-firmware linux-firmware iwd networkmanager t2fanrd grub efibootmgr nano sudo git base-devel lvm2 btrfs-progs", id="pacstrap_cmd")
+                        with VerticalScroll(id="packages_scroll", can_focus=False):
+                            yield Static("Start the initial installation:")
+                            yield Button("Add the T2 Repository or Rerank Mirrors", id="add_repo_btn")
+                            yield Static("Install the base system and T2 packages")
+                            yield Button("Auto Install (in the app)", id="pacstrap_auto_btn")
+                            yield Button("Manual Install (will exit the app)", id="pacstrap_manual_btn")
+                            yield Static("Manual command:")
+                            yield Static("pacstrap -K /mnt base linux-t2 linux-t2-headers apple-t2-audio-config apple-bcm-firmware linux-firmware iwd networkmanager t2fanrd grub efibootmgr nano sudo git base-devel lvm2 btrfs-progs", id="pacstrap_cmd")
 
                     with TabPane("System", id="system_tab"):
-                        yield Static("Configure the new system.")
-                        yield Button("Generate fstab", id="fstab_btn")
-                        yield Button("Add T2 Repository (GitHub) to Pacman", id="chroot_repo_btn")
-                        yield Button("Add T2 Repository (YuruMirror) to Pacman", id="chroot_repo_mirror_btn")
-                        yield Button("Add T2 Repository (MiningTcup) to Pacman", id="chroot_repo_miningtcup_btn")
-                        yield Button("Configure Modules & Locale", id="config_basic_btn")
-                        yield Static("Hostname:")
-                        yield Input(placeholder="Enter hostname", id="hostname_input")
-                        yield Button("Set Hostname", id="set_hostname_btn")
-                        yield Static("Set root password")
-                        yield Input(placeholder="Enter root password", password=True, id="root_password_input")
-                        yield Button("Set Root Password", id="set_root_password_btn")
-                        yield Button("Configure Sudoers", id="config_sudo_btn")
-                        yield Button("Build Initramfs", id="build_initramfs_btn")
+                        with VerticalScroll(id="system_scroll", can_focus=False):
+                            yield Static("Configure the new system.")
+                            yield Button("Generate fstab", id="fstab_btn")
+                            yield Button("Add T2 Repository to Pacman", id="chroot_repo_btn")
+                            yield Button("Configure Modules & Locale", id="config_basic_btn")
+                            yield Static("Hostname:")
+                            yield Input(placeholder="Enter hostname", id="hostname_input")
+                            yield Button("Set Hostname", id="set_hostname_btn")
+                            yield Static("Set root password")
+                            yield Input(placeholder="Enter root password", password=True, id="root_password_input")
+                            yield Button("Set Root Password", id="set_root_password_btn")
+                            yield Button("Configure Sudoers", id="config_sudo_btn")
+                            yield Button("Build Initramfs", id="build_initramfs_btn")
 
                     with TabPane("Boot", id="boot_tab"):
-                        yield Static("Choose your preferred bootloader:")
-                        with RadioSet(id="bootloader_choice"):
-                            yield RadioButton("GRUB", id="grub_bootloader", value=True)
-                            yield RadioButton("systemd-boot", id="systemd_bootloader")
-                        yield Button("Install Bootloader", id="install_bootloader_btn")
-                        yield Button("Create Boot Icon", id="boot_icon_btn")
-                        yield Button("Create Boot Label", id="boot_label_btn")
-                        yield Button("Install Plymouth for boot animation (Optional)", id="plymouth_btn")
+                        with VerticalScroll(id="boot_scroll", can_focus=False):
+                            yield Static("Choose your preferred bootloader:")
+                            with RadioSet(id="bootloader_choice"):
+                                yield RadioButton("GRUB", id="grub_bootloader", value=True)
+                                yield RadioButton("systemd-boot", id="systemd_bootloader")
+                                yield RadioButton("Limine", id="limine_bootloader")
+                            yield Button("Install Bootloader", id="install_bootloader_btn")
+                            yield Button("Create Boot Icon", id="boot_icon_btn")
+                            yield Button("Create Boot Label", id="boot_label_btn")
+                            yield Button("Install Plymouth for boot animation (Optional)", id="plymouth_btn")
 
                     with TabPane("Desktop", id="desktop_tab"):
-                        yield Static("Create your user and install your preferred desktop environment or window manager.")
-                        yield Static("")
-                        yield Static("Username:")
-                        yield Input(placeholder="Enter username", id="username_input")
-                        yield Static("User password:")
-                        yield Input(placeholder="Enter user password", password=True, id="user_password_input")
-                        yield Button("Create User & Services", id="create_user_btn")
-                        yield Static("Desktop Environment or Window Manager:")
-                        yield Button("None - Terminal only", id="no_de_btn")
-                        yield Button("GNOME", id="gnome_auto_btn")
-                        # yield Button("GNOME (Manual)", id="gnome_manual_btn")
-                        yield Button("KDE", id="kde_auto_btn")
-                        # yield Button("KDE (Manual)", id="kde_manual_btn")
-                        yield Button("COSMIC", id="cosmic_auto_btn")
-                        yield Button("Niri", id="niri_auto_btn")
-                        yield Button("Niri + DankMaterialShell", id="niridms_auto_btn")
-                        yield Static("Hyprland is not supported!")
+                        with VerticalScroll(id="desktop_scroll", can_focus=False):
+                            yield Static("Create your user and install your preferred desktop environment or window manager.")
+                            yield Static("")
+                            yield Static("Username:")
+                            yield Input(placeholder="Enter username", id="username_input")
+                            yield Static("User password:")
+                            yield Input(placeholder="Enter user password", password=True, id="user_password_input")
+                            yield Button("Create User & Services", id="create_user_btn")
+                            yield Static("Desktop Environment or Window Manager:")
+                            yield Button("None - Terminal only", id="no_de_btn")
+                            yield Button("GNOME", id="gnome_auto_btn")
+                            # yield Button("GNOME (Manual)", id="gnome_manual_btn")
+                            yield Button("KDE", id="kde_auto_btn")
+                            # yield Button("KDE (Manual)", id="kde_manual_btn")
+                            yield Button("COSMIC", id="cosmic_auto_btn")
+                            yield Button("Niri", id="niri_auto_btn")
+                            yield Button("Niri + DankMaterialShell", id="niridms_auto_btn")
+                            yield Static("Hyprland is not supported!")
 
                     with TabPane("Extras", id="extras_tab"):
-                        yield Static("Install additional (optional) packages and tweaks")
-                        yield Static("These include ffmpeg, pipewire, ghostty and fastfetch.")
-                        yield Button("Install Extra packages", id="extras_btn")
-                        yield Button("Install tiny-dfr (for better TouchBar support)", id="tiny_dfr_btn")
-                        yield Button("Add Sl's Arch Repository to Pacman", id="add_slsrepo_btn")
-                        yield Button("Enable Hybrid Graphics (iGPU)", id="enable_hybrid_graphics_btn")
-                        yield Button("T2 TouchBar recurring network notifications fix", id="recurring_network_notifications_fix_btn")
-                        yield Static("T2 Suspend solutions:")
-                        yield Button("Disable Suspend and Sleep", id="suspend_sleep_btn")
-                        yield Button("Ignore Suspend when closing the lid", id="ignore_lid_btn")
-                        yield Button("Enable Suspend Workaround Service", id="suspend_fix_btn")
+                        with VerticalScroll(id="extras_scroll", can_focus=False):
+                            yield Static("Install additional (optional) packages and tweaks")
+                            yield Static("These include ffmpeg, pipewire, ghostty and fastfetch.")
+                            yield Button("Install Extra packages", id="extras_btn")
+                            yield Button("Install tiny-dfr (for better TouchBar support)", id="tiny_dfr_btn")
+                            yield Button("Add Sl's Arch Repository to Pacman", id="add_slsrepo_btn")
+                            yield Button("Enable Hybrid Graphics (iGPU)", id="enable_hybrid_graphics_btn")
+                            yield Button("T2 TouchBar recurring network notifications fix", id="recurring_network_notifications_fix_btn")
+                            yield Static("T2 Suspend solutions:")
+                            yield Button("Disable Suspend and Sleep", id="suspend_sleep_btn")
+                            yield Button("Ignore Suspend when closing the lid", id="ignore_lid_btn")
+                            yield Button("Enable Suspend Workaround Service", id="suspend_fix_btn")
 
                     with TabPane("Completion", id="completion_tab"):
-                        yield Static("Installation Complete!")
-                        yield Static("Your Arch Linux T2 system has been successfully installed.")
-                        yield Static("The system is now ready to boot.")
-                        yield Static("Choose an option:")
-                        yield Button("Unmount Only", id="unmount_btn")
-                        yield Button("Unmount & Reboot", id="reboot_btn")
-                        yield Button("Unmount & Shutdown", id="shutdown_btn")
+                        with VerticalScroll(id="completion_scroll", can_focus=False):
+                            yield Static("Installation Complete!")
+                            yield Static("Your Arch Linux T2 system has been successfully installed.")
+                            yield Static("The system is now ready to boot.")
+                            yield Static("Choose an option:")
+                            yield Button("Unmount Only", id="unmount_btn")
+                            yield Button("Unmount & Reboot", id="reboot_btn")
+                            yield Button("Unmount & Shutdown", id="shutdown_btn")
             with Vertical(id="right_panel"):
                 yield RichLog(wrap=True, min_width=1, id="console")
                 yield Input(placeholder="Type commands here...", id="command_input")
         yield Footer()
 
-    def on_mount(self):
-        """Initialize the application."""
+    async def on_mount(self):
+        """Initialize the application and asynchronously refresh any already-mounted target filesystem state."""
         self.title = "T2 Arch Linux Installer"
 
         console = self.query_one("#console", RichLog)
@@ -271,11 +282,71 @@ class T2ArchInstaller(App):
         console.write("=" * 50)
         try:
             console.write("Current disks and partitions (lsblk -p):")
-            lsblk_output = subprocess.check_output(["lsblk", "-p"], text=True, timeout=10)
+            lsblk_output = await asyncio.to_thread(
+                subprocess.check_output,
+                ["lsblk", "-p"],
+                text=True,
+                timeout=10,
+            )
             for line in lsblk_output.splitlines():
                 console.write(line)
         except Exception as e:
             console.write(f"[WARN] Failed to get lsblk output: {e}")
+
+        try:
+            source, fstype = await self.refresh_target_root_storage(log_warnings=False)
+            if fstype:
+                console.write(
+                    f"[INFO] Detected existing target root filesystem: {self.format_detected_filesystem_label(fstype)} ({source})"
+                )
+            else:
+                console.write("[WARN] Failed to detect an existing target root filesystem at startup.")
+        except Exception as e:
+            console.write(f"[WARN] Failed to detect an existing target root filesystem at startup: {e}")
+
+        self._enable_horizontal_button_scroll()
+
+    def _enable_horizontal_button_scroll(self) -> None:
+        """Enable horizontal scrolling on all tab scroll views so buttons are never truncated."""
+        for scroll_id in [
+            "start_scroll",
+            "partition_scroll",
+            "mount_scroll",
+            "time_scroll",
+            "packages_scroll",
+            "system_scroll",
+            "boot_scroll",
+            "desktop_scroll",
+            "extras_scroll",
+            "completion_scroll",
+        ]:
+            scroll_view = self.query_one(f"#{scroll_id}", VerticalScroll)
+            scroll_view.styles.overflow_x = "auto"
+            for btn in scroll_view.query(Button):
+                btn.styles.min_width = len(str(btn.label)) + 4
+
+    def enable_post_install_scroll_views(self) -> None:
+        """Enable scrollbars for longer tabs when post-install mode is active."""
+        for scroll_id in [
+            "start_scroll",
+            "partition_scroll",
+            "mount_scroll",
+            "time_scroll",
+            "packages_scroll",
+            "system_scroll",
+            "boot_scroll",
+            "desktop_scroll",
+            "extras_scroll",
+            "completion_scroll",
+        ]:
+            scroll_view = self.query_one(f"#{scroll_id}", VerticalScroll)
+            scroll_view.can_focus = True
+            scroll_view.add_class("post-install-scroll")
+            scroll_view.styles.overflow_x = "auto"
+            scroll_view.styles.overflow_y = "auto"
+            for btn in scroll_view.query(Button):
+                btn.styles.min_width = len(str(btn.label)) + 4
+            scroll_view.refresh(layout=True)
 
     def action_switch_tab(self, index: int) -> None:
         """Handles key bindings by directly setting the active tab."""
@@ -413,6 +484,203 @@ class T2ArchInstaller(App):
         """Return target root path for direct filesystem writes."""
         return "/" if self.post_install_mode else "/mnt"
 
+    def resolve_lvm_device_path(self, device: str) -> str:
+        """Prefer the device-mapper path for LVM logical volumes when available."""
+        # Only consider /dev/* paths for LVM normalization.
+        if not device.startswith("/dev/"):
+            return device
+        # Match /dev/<vg>/<lv> but ignore /dev/mapper/* which is already normalized.
+        match = re.fullmatch(r"/dev/([^/]+)/([^/]+)", device)
+        if not match or match.group(1) == "mapper":
+            return device
+        vg_name, lv_name = match.groups()
+        mapper_device = f"/dev/mapper/{vg_name.replace('-', '--')}-{lv_name.replace('-', '--')}"
+        # Prefer the mapper device when it exists, even if the original path also exists.
+        return mapper_device if os.path.exists(mapper_device) else device
+
+    def probe_block_device_fstype(self, device: str) -> str:
+        """Probe a block device filesystem type."""
+        if not device.startswith("/dev/"):
+            return ""
+        result = subprocess.run(
+            ["lsblk", "-nro", "FSTYPE", device],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return ""
+        for line in result.stdout.splitlines():
+            fstype = line.strip().lower()
+            if fstype:
+                return fstype
+        return ""
+
+    def is_swap_active(self, device: str) -> bool:
+        """Return whether the given swap device is already active."""
+        resolved_device = os.path.realpath(device) if os.path.exists(device) else device
+        try:
+            with open("/proc/swaps", encoding="utf-8") as swaps_file:
+                next(swaps_file, None)
+                for line in swaps_file:
+                    active_device = line.split(None, 1)[0]
+                    if active_device == resolved_device:
+                        return True
+                    if os.path.exists(active_device) and os.path.realpath(active_device) == resolved_device:
+                        return True
+        except OSError:
+            return False
+        return False
+
+    async def probe_block_device_type(self, device: str, log_warnings: bool = True) -> str:
+        """Probe a block device type (for example, 'part' or 'lvm')."""
+        if not device.startswith("/dev/"):
+            return ""
+
+        probe = None
+        probe_cmd = ["lsblk", "-n", "-o", "TYPE", device]
+        try:
+            probe = await asyncio.create_subprocess_exec(
+                *probe_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(probe.communicate(), timeout=10)
+        except asyncio.TimeoutError:
+            if probe is not None:
+                try:
+                    probe.kill()
+                except ProcessLookupError:
+                    pass
+                except Exception as e:
+                    if log_warnings:
+                        self.query_one("#console", RichLog).write(
+                            f"[WARN] Failed to stop the timed-out block-device probe ({' '.join(probe_cmd)}): {e}"
+                        )
+                try:
+                    await asyncio.wait_for(probe.wait(), timeout=5)
+                except Exception as e:
+                    if log_warnings:
+                        self.query_one("#console", RichLog).write(
+                            f"[WARN] Timed-out block-device probe did not exit cleanly ({' '.join(probe_cmd)}): {e}"
+                        )
+            if log_warnings:
+                self.query_one("#console", RichLog).write(
+                    f"[WARN] Timed out while probing the target root block device ({' '.join(probe_cmd)})."
+                )
+            return ""
+        except OSError as e:
+            if log_warnings:
+                self.query_one("#console", RichLog).write(f"[WARN] Could not probe the target root block device: {e}")
+            return ""
+
+        if probe.returncode != 0:
+            if log_warnings:
+                self.query_one("#console", RichLog).write(
+                    f"[WARN] Block-device probe exited with code {probe.returncode}: {stderr.decode().strip()}"
+                )
+            return ""
+
+        output = stdout.decode().strip()
+        if not output:
+            return ""
+        return output.splitlines()[0].strip().lower()
+
+    async def refresh_target_root_storage(self, log_warnings: bool = True) -> tuple[str, str]:
+        """Probe the target root source/device, refresh cached root/filesystem state, and return (source, fstype)."""
+        target_mount = "/" if self.post_install_mode else "/mnt"
+        if self.post_install_mode:
+            probe_cmd = ["findmnt", "-n", "-o", "SOURCE,FSTYPE", "/"]
+        elif self._is_chroot_ready():
+            probe_cmd = ["arch-chroot", "/mnt", "findmnt", "-n", "-o", "SOURCE,FSTYPE", "/"]
+        elif os.path.ismount(target_mount):
+            probe_cmd = ["findmnt", "-n", "-o", "SOURCE,FSTYPE", target_mount]
+        else:
+            return "", ""
+
+        probe = None
+        try:
+            probe = await asyncio.create_subprocess_exec(
+                *probe_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(probe.communicate(), timeout=10)
+        except asyncio.TimeoutError:
+            if probe is not None:
+                try:
+                    probe.kill()
+                except ProcessLookupError:
+                    pass
+                except Exception as e:
+                    if log_warnings:
+                        self.query_one("#console", RichLog).write(
+                            f"[WARN] Failed to stop the timed-out filesystem probe ({' '.join(probe_cmd)}): {e}"
+                        )
+                try:
+                    await asyncio.wait_for(probe.wait(), timeout=5)
+                except Exception as e:
+                    if log_warnings:
+                        self.query_one("#console", RichLog).write(
+                            f"[WARN] Timed-out filesystem probe did not exit cleanly ({' '.join(probe_cmd)}): {e}"
+                        )
+            if log_warnings:
+                self.query_one("#console", RichLog).write(
+                    f"[WARN] Timed out while probing the target root filesystem ({' '.join(probe_cmd)})."
+                )
+            return "", ""
+        except OSError as e:
+            if log_warnings:
+                self.query_one("#console", RichLog).write(f"[WARN] Could not probe the target root filesystem: {e}")
+            return "", ""
+
+        if probe.returncode != 0:
+            if log_warnings:
+                self.query_one("#console", RichLog).write(
+                    f"[WARN] Filesystem probe exited with code {probe.returncode}: {stderr.decode().strip()}"
+                )
+            return "", ""
+
+        output = stdout.decode().strip()
+        if not output:
+            return "", ""
+
+        parts = output.split(None, 1)
+        source = re.sub(r"\[[^]]*\]$", "", parts[0]) if parts else ""
+        fstype = parts[1].lower() if len(parts) > 1 else ""
+        if source and not fstype and log_warnings:
+            self.query_one("#console", RichLog).write(
+                f"[WARN] Root filesystem probe returned no filesystem type ({' '.join(probe_cmd)})."
+            )
+        if fstype:
+            self.filesystem_type = fstype
+        if source:
+            device_type = await self.probe_block_device_type(source, log_warnings=log_warnings)
+            self.use_lvm = device_type == "lvm"
+        # In post-install mode, or before a root partition has been selected explicitly,
+        # keep the detected root source so later bootloader/snapshot steps use the real device.
+        if source and (self.post_install_mode or not self.root_partition):
+            self.root_partition = source
+        return source, fstype
+
+    async def target_root_uses_btrfs(self, log_warnings: bool = True) -> bool:
+        """Return whether the actual target root filesystem is Btrfs."""
+        _source, fstype = await self.refresh_target_root_storage(log_warnings=log_warnings)
+        if fstype:
+            return fstype == "btrfs"
+        if log_warnings:
+            self.query_one("#console", RichLog).write(
+                "[WARN] Could not confirm the target root filesystem; skipping Btrfs-specific actions."
+            )
+        return False
+
+    def format_detected_filesystem_label(self, fstype: str) -> str:
+        """Format detected filesystem labels for user-visible logging."""
+        if not fstype:
+            return ""
+        if self.use_lvm and " in lvm" not in fstype.lower():
+            return f"{fstype} in LVM"
+        return fstype
+
     @on(Input.Submitted, "#command_input")
     async def on_input_submitted(self, event: Input.Submitted):
         """Handle input submission."""
@@ -429,7 +697,11 @@ class T2ArchInstaller(App):
             self.use_lvm = "lvm" in choice
             self.filesystem_type = "btrfs" if "btrfs" in choice else "ext4"
         elif event.radio_set.id == "bootloader_choice":
-            self.bootloader_type = "grub" if event.pressed.id == "grub_bootloader" else "systemd-boot"
+            self.bootloader_type = {
+                "grub_bootloader": "grub",
+                "systemd_bootloader": "systemd-boot",
+                "limine_bootloader": "limine",
+            }.get(event.pressed.id, "grub")
         elif event.radio_set.id == "partition_mode":
             self.partition_mode = event.pressed.id
 
@@ -460,7 +732,13 @@ class T2ArchInstaller(App):
                 console.write("[ERROR] Please enter a disk path first")
         elif button_id == "post_install_btn":
             self.post_install_mode = True
+            self.enable_post_install_scroll_views()
             console.write("[WARN] Post-install mode enabled: commands will run on the current system (no arch-chroot).")
+            source, fstype = await self.refresh_target_root_storage(log_warnings=True)
+            if fstype:
+                console.write(
+                    f"[INFO] Detected current root filesystem: {self.format_detected_filesystem_label(fstype)} ({source})"
+                )
             tabs.active = "time_tab"
         elif button_id == "create_partitions_btn": await self.create_partitions()
         elif button_id == "mount_partitions_btn": await self.mount_partitions()
@@ -468,22 +746,22 @@ class T2ArchInstaller(App):
         elif button_id == "add_locales_btn": self.add_locales()
         elif button_id == "set_language_btn": await self.set_language()
         elif button_id == "add_repo_btn": await self.add_t2_repository()
-        elif button_id == "add_repo_mirror_btn": await self.add_t2_repository_mirror()
-        elif button_id == "add_repo_miningtcup_btn": await self.add_t2_repository_miningtcup()
         elif button_id == "pacstrap_auto_btn": await self.install_base_system_auto()
         elif button_id == "pacstrap_manual_btn": await self.install_base_system_manual()
         elif button_id == "fstab_btn": await self.generate_fstab()
         elif button_id == "chroot_repo_btn": await self.add_t2_repo_to_chroot()
-        elif button_id == "chroot_repo_mirror_btn": await self.add_t2_repo_mirror_to_chroot()
-        elif button_id == "chroot_repo_miningtcup_btn": await self.add_t2_repo_miningtcup_to_chroot()
         elif button_id == "config_basic_btn": await self.configure_basic_system()
         elif button_id == "set_hostname_btn": await self.set_hostname()
         elif button_id == "set_root_password_btn": await self.set_root_password()
         elif button_id == "config_sudo_btn": await self.configure_sudoers()
         elif button_id == "build_initramfs_btn": await self.build_initramfs()
         elif button_id == "install_bootloader_btn":
-            if self.bootloader_type == "grub": await self.install_grub()
-            else: await self.install_systemd_boot()
+            if self.bootloader_type == "grub":
+                await self.install_grub()
+            elif self.bootloader_type == "limine":
+                await self.install_limine()
+            else:
+                await self.install_systemd_boot()
         elif button_id == "boot_icon_btn": await self.create_boot_icon()
         elif button_id == "boot_label_btn": await self.create_boot_label()
         elif button_id == "plymouth_btn": await self.install_plymouth()
@@ -840,6 +1118,17 @@ class T2ArchInstaller(App):
         if not all([self.root_partition, self.efi_partition]):
             console.write("[ERROR] Please specify at least the Root and EFI partitions")
             return
+        if re.fullmatch(r"/dev/[^/]+/[^/]+", self.root_partition):
+            await self.run_command("vgscan --mknodes >/dev/null 2>&1 || true")
+            await self.run_command("vgchange -ay >/dev/null 2>&1 || true")
+        self.root_partition = self.resolve_lvm_device_path(self.root_partition)
+        root_fstype = self.probe_block_device_fstype(self.root_partition)
+        if root_fstype:
+            self.filesystem_type = root_fstype
+        root_device_type = await self.probe_block_device_type(self.root_partition, log_warnings=False)
+        if root_device_type:
+            self.use_lvm = root_device_type == "lvm"
+        await self.run_command("umount -R /mnt 2>/dev/null || true")
         if self.filesystem_type == "btrfs":
             btrfs_opts = "rw,noatime,compress=zstd,space_cache=v2"
             if not await self.run_command(f"mount -o {btrfs_opts},subvol=@ {self.root_partition} /mnt"):
@@ -872,8 +1161,10 @@ class T2ArchInstaller(App):
                     "mkdir -p /mnt/boot/efi",
                     f"mount {self.efi_partition} /mnt/boot/efi",
                     ]
-        if self.swap_partition:
+        if self.swap_partition and not self.is_swap_active(self.swap_partition):
             commands.append(f"swapon {self.swap_partition}")
+        elif self.swap_partition:
+            console.write(f"[INFO] Swap is already active on {self.swap_partition}; skipping swapon.")
         for cmd in commands:
             if not await self.run_command(cmd):
                 console.write("[ERROR] Mounting failed.")
@@ -881,6 +1172,13 @@ class T2ArchInstaller(App):
         console.write("Partitions mounted successfully!")
         if self.disk:
             await self.run_command(f"lsblk -p {self.disk}")
+        source, fstype = await self.refresh_target_root_storage(log_warnings=True)
+        if fstype:
+            console.write(
+                f"[INFO] Detected mounted target root filesystem: {self.format_detected_filesystem_label(fstype)} ({source})"
+            )
+        else:
+            console.write("[WARN] Failed to detect the mounted target root filesystem.")
         self.query_one("#left_panel").focus()
         self.query_one(TabbedContent).active = "time_tab"
 
@@ -1070,93 +1368,115 @@ class T2ArchInstaller(App):
         """
         return f"[{repo_name}]\\nServer = {server_url}\\nSigLevel = {sig_level}"
 
+    def write_t2_repo_config(self, target_root: str) -> bool:
+        """Ensure pacman.conf uses the Include-based arch-mact2 repo definition."""
+        console = self.query_one("#console", RichLog)
+        conf_path = os.path.join(target_root, "etc/pacman.conf")
+        repo_config = "\n".join([
+            "[arch-mact2]",
+            "SigLevel = Never",
+            f"Include = /etc/pacman.d/arch-mact2-mirrorlist",
+            "",
+        ])
+
+        try:
+            with open(conf_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            new_lines = []
+            in_repo_section = False
+            repo_replaced = False
+
+            for line in lines:
+                stripped = line.strip()
+                if stripped == "[arch-mact2]":
+                    in_repo_section = True
+                    if not repo_replaced:
+                        if new_lines and new_lines[-1].strip():
+                            new_lines.append("\n")
+                        new_lines.append(repo_config)
+                        new_lines.append("\n")
+                        repo_replaced = True
+                    continue
+
+                if in_repo_section:
+                    if stripped.startswith("[") and stripped.endswith("]"):
+                        in_repo_section = False
+                        new_lines.append(line)
+                    continue
+
+                new_lines.append(line)
+
+            if not repo_replaced:
+                if new_lines and new_lines[-1].strip():
+                    new_lines.append("\n")
+                new_lines.append(repo_config)
+
+            with open(conf_path, "w", encoding="utf-8", newline="\n") as f:
+                f.writelines(new_lines)
+            return True
+        except Exception as e:
+            console.write(f"[ERROR] Failed to configure the T2 repository in pacman.conf: {e}")
+            return False
+
+    async def configure_t2_repository(self, use_chroot: bool = False) -> bool:
+        """Configure the T2 repository using the mirrorlist and rankmirrors flow."""
+        console = self.query_one("#console", RichLog)
+        target_root = self._get_target_root() if use_chroot else "/"
+        runner = self.run_in_chroot if use_chroot else self.run_command
+        package_mirrorlist_full_path = os.path.join(target_root, os.path.relpath("/etc/pacman.d/arch-mact2-mirrorlist", "/"))
+
+        # If the package-owned mirrorlist already exists, keep using it and only ensure pacman.conf includes it.
+        if os.path.exists(package_mirrorlist_full_path):
+            console.write("Package-owned T2 mirrorlist already exists, skipping bootstrap setup.")
+            if not self.write_t2_repo_config(target_root):
+                return False
+        else:
+            # Otherwise bootstrap the repo with a single temporary seed mirror written to the standard mirrorlist path.
+            try:
+                os.makedirs(os.path.dirname(package_mirrorlist_full_path), exist_ok=True)
+                with open(package_mirrorlist_full_path, "w", encoding="utf-8", newline="\n") as f:
+                    f.write(f"Server = https://github.com/NoaHimesaka1873/arch-mact2-mirror/releases/download/release\n")
+            except Exception as e:
+                console.write(f"[ERROR] Failed to write the T2 bootstrap mirrorlist: {e}")
+                return False
+
+            if not self.write_t2_repo_config(target_root):
+                return False
+
+        # In post-install mode run_in_chroot targets the current system, so report the actual filesystem being changed.
+        location = "the target system" if use_chroot and target_root == "/mnt" else "the current system"
+        console.write(f"Configuring the T2 repository mirrorlist on {location}...")
+
+        if not await runner("pacman -Sy --noconfirm --needed arch-mact2-mirrorlist arch-mact2-rankmirrors"):
+            console.write("[ERROR] Failed to install the T2 mirrorlist packages.")
+            return False
+
+        console.write(f"T2 mirrorlist package installed successfully! :)")
+
+        if not await runner("arch-mact2-rankmirrors --use-local-mirrorlist"):
+            console.write("[WARN] Failed to rank the T2 mirrors automatically; keeping the full mirrorlist order instead.")
+        else:
+            console.write("T2 mirrors ranked successfully! :)")
+
+        if not await runner("pacman -Sy"):
+            console.write("[ERROR] Failed to refresh pacman databases after configuring the T2 repository.")
+            return False
+
+        console.write("T2 repository configured successfully!")
+        return True
+
     async def add_t2_repository(self):
         """Add the T2 repository to pacman."""
-        console = self.query_one("#console", RichLog)
-        repo_name = "arch-mact2"
-        server_url = "https://github.com/NoaHimesaka1873/arch-mact2-mirror/releases/download/release"
+        if await self.configure_t2_repository():
+            self.query_one("#pacstrap_auto_btn").focus()
 
-        # Check if repository already exists
-        exists, current_url = self.check_repo_in_pacman_conf(repo_name)
-
-        if exists and current_url is not None and current_url == server_url:
-            console.write(f"T2 repository already exists with the correct URL. Skipping...")
-            await self.run_command("pacman -Sy")
-        elif exists and (current_url is None or current_url != server_url):
-            console.write(f"T2 repository exists but URL is missing or different. Updating...")
-            if await self.update_repo_in_pacman_conf(repo_name, server_url):
-                console.write(f"T2 repository URL updated to GitHub successfully!")
-                await self.run_command("pacman -Sy")
-            else:
-                console.write(f"[ERROR] Failed to update T2 repository URL.")
-        else:
-            console.write(f"Adding T2 repository (GitHub)...")
-            repo_config = self.build_repo_config(repo_name, server_url)
-            await self.run_command(f"echo -e '{repo_config}' >> /etc/pacman.conf")
-            await self.run_command("pacman -Sy")
-            console.write("T2 repository (GitHub) added successfully!")
-
-        self.query_one("#pacstrap_auto_btn").focus()
-
-    async def add_t2_repository_mirror(self):
-        """Add the T2 repository mirror to pacman."""
-        console = self.query_one("#console", RichLog)
-        repo_name = "arch-mact2"
-        server_url = "https://mirror.funami.tech/arch-mact2/os/x86_64"
-
-        # Check if repository already exists
-        exists, current_url = self.check_repo_in_pacman_conf(repo_name)
-
-        if exists and current_url is not None and current_url == server_url:
-            console.write(f"T2 repository already exists with the correct URL. Skipping...")
-            await self.run_command("pacman -Sy")
-        elif exists and (current_url is None or current_url != server_url):
-            console.write(f"T2 repository exists but URL is different or missing. Updating...")
-            if await self.update_repo_in_pacman_conf(repo_name, server_url):
-                console.write(f"T2 repository URL updated to YuruMirror successfully!")
-                await self.run_command("pacman -Sy")
-            else:
-                console.write(f"[ERROR] Failed to update T2 repository URL.")
-        else:
-            console.write(f"Adding T2 repository (YuruMirror)...")
-            repo_config = self.build_repo_config(repo_name, server_url)
-            await self.run_command(f"echo -e '{repo_config}' >> /etc/pacman.conf")
-            await self.run_command("pacman -Sy")
-            console.write("T2 repository (YuruMirror) added successfully!")
-
-        self.query_one("#pacstrap_auto_btn").focus()
-
-    async def add_t2_repository_miningtcup(self):
-        """Add the T2 repository MiningTcup mirror to pacman."""
-        console = self.query_one("#console", RichLog)
-        repo_name = "arch-mact2"
-        server_url = "https://arch-mact2.miningtcup.me/os/x86_64"
-
-        # Check if repository already exists
-        exists, current_url = self.check_repo_in_pacman_conf(repo_name)
-
-        if exists and current_url is not None and current_url == server_url:
-            console.write("T2 repository already exists with the correct URL. Refreshing configuration...")
-            if await self.update_repo_in_pacman_conf(repo_name, server_url):
-                console.write("T2 repository configuration verified/updated successfully.")
-                await self.run_command("pacman -Sy")
-            else:
-                console.write("[ERROR] Failed to refresh T2 repository configuration.")
-        elif exists and (current_url is None or current_url != server_url):
-            console.write(f"T2 repository exists but URL is different or missing. Updating...")
-            if await self.update_repo_in_pacman_conf(repo_name, server_url):
-                console.write(f"T2 repository URL updated to MiningTcup successfully!")
-                await self.run_command("pacman -Sy")
-            else:
-                console.write(f"[ERROR] Failed to update T2 repository URL.")
-        else:
-            console.write(f"Adding T2 repository (MiningTcup)...")
-            repo_config = self.build_repo_config(repo_name, server_url)
-            await self.run_command(f"echo -e '{repo_config}' >> /etc/pacman.conf")
-            await self.run_command("pacman -Sy")
-            console.write("T2 repository (MiningTcup) added successfully!")
-
-        self.query_one("#pacstrap_auto_btn").focus()
+    async def add_t2_repo_to_chroot(self) -> bool:
+        """Add the T2 repository to pacman inside the target system."""
+        if await self.configure_t2_repository(use_chroot=True):
+            self.query_one("#config_basic_btn").focus()
+            return True
+        return False
 
     async def install_base_system_auto(self):
         """Install the base system with T2 packages automatically using pacstrap."""
@@ -1197,144 +1517,72 @@ class T2ArchInstaller(App):
             return
         console.write("fstab generated successfully!")
         # Configure Snapper only when Btrfs is actually used for the root filesystem.
-        if self.filesystem_type == "btrfs":
-            # Probe the actual root fstype using async subprocess to avoid blocking the TUI.
-            try:
-                probe_cmd = ["arch-chroot", "/mnt", "findmnt", "-n", "-o", "FSTYPE", "/"]
-                probe = await asyncio.create_subprocess_exec(
-                    *probe_cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, stderr = await asyncio.wait_for(probe.communicate(), timeout=10)
-                if probe.returncode != 0:
-                    console.write(f"[WARN] findmnt probe exited with code {probe.returncode}: {stderr.decode().strip()}")
-                    root_fstype = ""
-                else:
-                    root_fstype = stdout.decode().strip().lower()
-            except asyncio.TimeoutError as e:
-                console.write(f"[WARN] Could not probe root filesystem type (timeout): {e}")
-                try:
-                    probe.kill()
-                except ProcessLookupError:
-                    pass
-                except Exception:
-                    pass
-                try:
-                    await asyncio.wait_for(probe.wait(), timeout=5)
-                except Exception:
-                    pass
-                root_fstype = ""
-            except OSError as e:
-                console.write(f"[WARN] Could not probe root filesystem type: {e}")
-                root_fstype = ""
-            if "btrfs" not in root_fstype:
-                console.write("[INFO] Skipping Snapper configuration because the root filesystem is not Btrfs.")
+        if await self.target_root_uses_btrfs():
+            # Install snapper packages in chroot
+            snapper_pkgs = "snapper btrfs-assistant"
+            console.write(f"Installing snapper packages: {snapper_pkgs}...")
+            if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {snapper_pkgs}"):
+                console.write("[ERROR] Failed to install snapper packages.")
+                return
+            # Check if snapper root config already exists to make this idempotent.
+            config_path = os.path.join(self._get_target_root(), "etc/snapper/configs/root")
+            if os.path.exists(config_path):
+                console.write("[INFO] Snapper root config already exists, skipping create-config.")
             else:
-                # Install snapper packages in chroot
-                snapper_pkgs = "snapper btrfs-assistant"
-                console.write(f"Installing snapper packages: {snapper_pkgs}...")
-                if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {snapper_pkgs}"):
-                    console.write("[ERROR] Failed to install snapper packages.")
+                # snapper create-config creates its own .snapshots subvolume, which conflicts with our pre-existing @snapshots subvolume.
+                # We must unmount @snapshots, let snapper create its subvol, then replace the snapper-created subvol with our @snapshots mount.
+                target = self._get_target_root()
+                snapshots_mount = os.path.join(target, ".snapshots")
+                await self.run_command(f"umount {snapshots_mount}")
+                await self.run_command(f"rmdir {snapshots_mount}")
+                if not await self.run_in_chroot("snapper --no-dbus -c root create-config /"):
+                    console.write("[ERROR] Snapper configuration failed: snapper --no-dbus -c root create-config /")
                     return
-                # Check if snapper root config already exists to make this idempotent.
-                config_path = os.path.join(self._get_target_root(), "etc/snapper/configs/root")
-                if os.path.exists(config_path):
-                    console.write("[INFO] Snapper root config already exists, skipping create-config.")
-                else:
-                    # snapper create-config creates its own .snapshots subvolume, which conflicts with our pre-existing @snapshots subvolume.
-                    # We must unmount @snapshots, let snapper create its subvol, then replace the snapper-created subvol with our @snapshots mount.
-                    target = self._get_target_root()
-                    snapshots_mount = os.path.join(target, ".snapshots")
-                    await self.run_command(f"umount {snapshots_mount}")
-                    await self.run_command(f"rmdir {snapshots_mount}")
-                    if not await self.run_in_chroot("snapper --no-dbus -c root create-config /"):
-                        console.write("[ERROR] Snapper configuration failed: snapper --no-dbus -c root create-config /")
-                        return
-                    await self.run_command(f"btrfs subvolume delete {snapshots_mount}")
-                    await self.run_command(f"mkdir -p {snapshots_mount}")
-                    btrfs_opts = "rw,noatime,compress=zstd,space_cache=v2"
-                    await self.run_command(f"mount -o {btrfs_opts},subvol=@snapshots {self.root_partition} {snapshots_mount}")
-                # Set cleanup limits
-                limit_overrides = {
-                    "TIMELINE_LIMIT_HOURLY": '"5"',
-                    "TIMELINE_LIMIT_DAILY": '"7"',
-                    "TIMELINE_LIMIT_WEEKLY": '"0"',
-                    "TIMELINE_LIMIT_MONTHLY": '"0"',
-                    "TIMELINE_LIMIT_YEARLY": '"0"',
-                    "NUMBER_LIMIT": '"2-10"',
-                    "NUMBER_LIMIT_IMPORTANT": '"4-10"',
-                }
-                try:
-                    with open(config_path, "r") as f:
-                        lines = f.readlines()
-                    new_lines = []
-                    for line in lines:
-                        replaced = False
-                        for key, val in limit_overrides.items():
-                            if line.startswith(f"{key}="):
-                                new_lines.append(f"{key}={val}\n")
-                                replaced = True
-                                break
-                        if not replaced:
-                            new_lines.append(line)
-                    with open(config_path, "w") as f:
-                        f.writelines(new_lines)
-                    console.write("Snapper cleanup limits configured.")
-                except Exception as e:
-                    console.write(f"[WARN] Could not set snapper cleanup limits: {e}")
-                enable_cmds = [
-                    "systemctl enable snapper-timeline.timer",
-                    "systemctl enable snapper-cleanup.timer",
-                    "systemctl enable snapper-boot.timer",
-                ]
-                for cmd in enable_cmds:
-                    if not await self.run_in_chroot(cmd):
-                        console.write(f"[WARN] Failed to enable: {cmd}")
-                console.write("Snapper BTRFS Snapshots configured and fstab generated successfully!")
+                await self.run_command(f"btrfs subvolume delete {snapshots_mount}")
+                await self.run_command(f"mkdir -p {snapshots_mount}")
+                btrfs_opts = "rw,noatime,compress=zstd,space_cache=v2"
+                await self.run_command(f"mount -o {btrfs_opts},subvol=@snapshots {self.root_partition} {snapshots_mount}")
+            # Set cleanup limits
+            limit_overrides = {
+                "TIMELINE_LIMIT_HOURLY": '"5"',
+                "TIMELINE_LIMIT_DAILY": '"7"',
+                "TIMELINE_LIMIT_WEEKLY": '"0"',
+                "TIMELINE_LIMIT_MONTHLY": '"0"',
+                "TIMELINE_LIMIT_YEARLY": '"0"',
+                "NUMBER_LIMIT": '"2-10"',
+                "NUMBER_LIMIT_IMPORTANT": '"4-10"',
+            }
+            try:
+                with open(config_path, "r") as f:
+                    lines = f.readlines()
+                new_lines = []
+                for line in lines:
+                    replaced = False
+                    for key, val in limit_overrides.items():
+                        if line.startswith(f"{key}="):
+                            new_lines.append(f"{key}={val}\n")
+                            replaced = True
+                            break
+                    if not replaced:
+                        new_lines.append(line)
+                with open(config_path, "w") as f:
+                    f.writelines(new_lines)
+                console.write("Snapper cleanup limits configured.")
+            except Exception as e:
+                console.write(f"[WARN] Could not set snapper cleanup limits: {e}")
+            enable_cmds = [
+                "systemctl enable snapper-timeline.timer",
+                "systemctl enable snapper-cleanup.timer",
+                "systemctl enable snapper-boot.timer",
+            ]
+            for cmd in enable_cmds:
+                if not await self.run_in_chroot(cmd):
+                    console.write(f"[WARN] Failed to enable: {cmd}")
+            console.write("Snapper BTRFS Snapshots configured and fstab generated successfully!")
+        else:
+            console.write("[INFO] Skipping Snapper configuration because the root filesystem is not Btrfs.")
         self.query_one("#chroot_repo_btn").focus()
 
-    async def add_t2_repo_to_chroot(self) -> bool:
-        """Add the T2 repository to pacman inside the chroot environment."""
-        console = self.query_one("#console", RichLog)
-        repo_config = "[arch-mact2]\\nServer = https://github.com/NoaHimesaka1873/arch-mact2-mirror/releases/download/release\\nSigLevel = Never"
-        if not await self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf"):
-            console.write("[ERROR] Failed to write T2 repository (GitHub) to pacman.conf.")
-            return False
-        if not await self.run_in_chroot("pacman -Sy"):
-            console.write("[ERROR] Failed to refresh pacman databases after adding T2 repository (GitHub).")
-            return False
-        console.write(f"T2 repository (GitHub) added to the system's pacman.conf successfully!")
-        self.query_one("#config_basic_btn").focus()
-        return True
-
-    async def add_t2_repo_mirror_to_chroot(self) -> bool:
-        """Add the T2 repository mirror to pacman inside the chroot environment."""
-        console = self.query_one("#console", RichLog)
-        repo_config = "[arch-mact2]\\nServer = https://mirror.funami.tech/arch-mact2/os/x86_64\\nSigLevel = Never"
-        if not await self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf"):
-            console.write("[ERROR] Failed to write T2 repository (YuruMirror) to pacman.conf.")
-            return False
-        if not await self.run_in_chroot("pacman -Sy"):
-            console.write("[ERROR] Failed to refresh pacman databases after adding T2 repository (YuruMirror).")
-            return False
-        console.write(f"T2 repository (YuruMirror) added to the system's pacman.conf successfully!")
-        self.query_one("#config_basic_btn").focus()
-        return True
-
-    async def add_t2_repo_miningtcup_to_chroot(self) -> bool:
-        """Add the T2 repository MiningTcup mirror to pacman inside the chroot environment."""
-        console = self.query_one("#console", RichLog)
-        repo_config = "[arch-mact2]\\nServer = https://arch-mact2.miningtcup.me/\\nSigLevel = Never"
-        if not await self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf"):
-            console.write("[ERROR] Failed to write T2 repository (MiningTcup) to pacman.conf.")
-            return False
-        if not await self.run_in_chroot("pacman -Sy"):
-            console.write("[ERROR] Failed to refresh pacman databases after adding T2 repository (MiningTcup).")
-            return False
-        console.write(f"T2 repository (MiningTcup) added to the system's pacman.conf successfully!")
-        self.query_one("#config_basic_btn").focus()
-        return True
 
     async def configure_basic_system(self):
         """Configure T2 modules, locale, and time."""
@@ -1423,7 +1671,23 @@ class T2ArchInstaller(App):
         if not await self.run_in_chroot("grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB --removable"):
             console.write("[ERROR] GRUB installation failed")
             return
-        if self.filesystem_type == "btrfs":
+        # Silence the "Loading Linux..." and "Loading initial ramdisk..." messages
+        grub_linux_script = os.path.join(self._get_target_root(), "etc", "grub.d", "10_linux")
+        try:
+            with open(grub_linux_script, "r", encoding="utf-8") as f:
+                grub_linux_lines = f.readlines()
+            updated_grub_linux_lines = []
+            for line in grub_linux_lines:
+                stripped = line.lstrip()
+                if stripped.startswith("echo") and '$(echo "$message" | grub_quote)' in line:
+                    updated_grub_linux_lines.append(f"{line[:len(line) - len(stripped)]}# {stripped}")
+                else:
+                    updated_grub_linux_lines.append(line)
+            with open(grub_linux_script, "w", encoding="utf-8", newline="\n") as f:
+                f.writelines(updated_grub_linux_lines)
+        except OSError as e:
+            console.write(f"[WARN] Failed to silence GRUB loading messages: {e}")
+        if await self.target_root_uses_btrfs():
             console.write("Installing grub-btrfs for snapshot boot entries...")
             if not await self.run_in_chroot("pacman -S --noconfirm --needed grub-btrfs inotify-tools"):
                 console.write("[WARN] Failed to install grub-btrfs, skipping.")
@@ -1447,7 +1711,7 @@ class T2ArchInstaller(App):
             return
 
         kernel_params = "rw quiet splash intel_iommu=on iommu=pt pcie_ports=compat"
-        if self.filesystem_type == "btrfs":
+        if await self.target_root_uses_btrfs():
             kernel_params += " rootflags=subvol=@"
         root_part = "root=/dev/vg0/root" if self.use_lvm else f"root={self.root_partition}"
 
@@ -1465,6 +1729,94 @@ class T2ArchInstaller(App):
                 return
 
         console.write("systemd-boot installed successfully!")
+        self.query_one("#boot_icon_btn").focus()
+
+    async def install_limine(self):
+        """Install and configure Limine as the bootloader."""
+        console = self.query_one("#console", RichLog)
+        console.write("Installing Limine...")
+
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed limine"):
+            console.write("[ERROR] Limine installation failed")
+            return
+
+        kernel_params = "rw quiet splash intel_iommu=on iommu=pt pcie_ports=compat"
+        if await self.target_root_uses_btrfs():
+            kernel_params += " rootflags=subvol=@"
+        root_part = "root=/dev/vg0/root" if self.use_lvm else f"root={self.root_partition}"
+
+        commands = [
+            # Ensure ESP boot directory and Limine EFI binary are present
+            "install -d /boot/efi/EFI/BOOT",
+            "install -Dm0644 /usr/share/limine/BOOTX64.EFI /boot/efi/EFI/BOOT/BOOTX64.EFI",
+            # Copy kernel and initramfs to the ESP so boot(): can access them
+            "install -Dm0644 /boot/vmlinuz-linux-t2 /boot/efi/vmlinuz-linux-t2",
+            "install -Dm0644 /boot/initramfs-linux-t2.img /boot/efi/initramfs-linux-t2.img",
+            "[ -f /boot/initramfs-linux-t2-fallback.img ] && install -Dm0644 /boot/initramfs-linux-t2-fallback.img /boot/efi/initramfs-linux-t2-fallback.img || true",
+        ]
+        for cmd in commands:
+            if not await self.run_in_chroot(cmd):
+                console.write("[ERROR] Failed to finalize Limine configuration")
+                return
+        limine_conf_path = os.path.join(self._get_target_root(), "boot", "efi", "limine.conf")
+        limine_conf_lines = [
+            "timeout: 3",
+            "quiet: no",
+            "verbose: no",
+            "default_entry: 1",
+            "remember_last_entry: yes",
+            "",
+            "/Arch Linux T2",
+            "    protocol: linux",
+            "    kernel_path: boot():/vmlinuz-linux-t2",
+            "    module_path: boot():/initramfs-linux-t2.img",
+            f"    cmdline: {root_part} {kernel_params}",
+        ]
+        fallback_initramfs_path = os.path.join(self._get_target_root(), "boot", "efi", "initramfs-linux-t2-fallback.img")
+        if os.path.exists(fallback_initramfs_path):
+            limine_conf_lines.extend([
+                "",
+                "/Arch Linux T2 (Fallback)",
+                "    protocol: linux",
+                "    kernel_path: boot():/vmlinuz-linux-t2",
+                "    module_path: boot():/initramfs-linux-t2-fallback.img",
+                f"    cmdline: {root_part} {kernel_params}",
+            ])
+        try:
+            limine_conf_dir = os.path.dirname(limine_conf_path)
+            os.makedirs(limine_conf_dir, exist_ok=True)
+            with open(limine_conf_path, "w", encoding="utf-8", newline="\n") as f:
+                f.write("\n".join(limine_conf_lines) + "\n")
+        except OSError as e:
+            console.write(f"[ERROR] Failed to write Limine configuration: {e}")
+            return
+        if await self.target_root_uses_btrfs():
+            limine_update_path = os.path.join(self._get_target_root(), "usr", "bin", "limine-update")
+            if os.path.exists(limine_update_path):
+                console.write("Configuring Limine snapshot defaults for Btrfs...")
+                # Write directly into the target root so quoted Limine defaults are preserved without shell-escaping issues.
+                default_limine_path = os.path.join(self._get_target_root(), "etc", "default", "limine")
+                default_limine_contents = "\n".join([
+                    "# Generated by T2 Arch Linux Installer",
+                    'TARGET_OS_NAME="Arch Linux T2"',
+                    'ESP_PATH="/boot/efi"',
+                    f'KERNEL_CMDLINE[default]="{root_part} {kernel_params}"',
+                    "ENABLE_LIMINE_FALLBACK=yes",
+                    'BOOT_ORDER="*, *fallback, Snapshots"',
+                    "MAX_SNAPSHOT_ENTRIES=5",
+                    "SNAPSHOT_FORMAT_CHOICE=5",
+                    "",
+                ])
+                try:
+                    os.makedirs(os.path.dirname(default_limine_path), exist_ok=True)
+                    with open(default_limine_path, "w", encoding="utf-8", newline="\n") as f:
+                        f.write(default_limine_contents)
+                except OSError as e:
+                    console.write(f"[WARN] Failed to write /etc/default/limine for snapshot integration: {e}")
+            else:
+                console.write("[WARN] Limine snapshot integration helpers are unavailable in the current package set; skipping automatic snapshot integration.")
+
+        console.write("Limine installed successfully!")
         self.query_one("#boot_icon_btn").focus()
 
     async def create_boot_icon(self):
@@ -1506,7 +1858,7 @@ class T2ArchInstaller(App):
     async def install_plymouth(self):
         """Install Plymouth for boot animation."""
         console = self.query_one("#console", RichLog)
-        if not await self.run_in_chroot("pacman -S --noconfirm --needed plymouth", timeout=600):
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed plymouth librsvg", timeout=600):
             console.write("[ERROR] Failed to install plymouth")
             return
         # Add plymouth to HOOKS before the block hook on lines that don't already include it
@@ -1527,6 +1879,17 @@ class T2ArchInstaller(App):
         if self.use_lvm and not await self.run_in_chroot(r"grep -Eq '^HOOKS=.*plymouth.*block.*lvm2' /etc/mkinitcpio.conf"):
             console.write("[ERROR] lvm2 hook missing after Plymouth setup")
             return
+        console.write("Setting up Apple logo BGRT fallback...")
+        apple_logo_svg = '<svg role="img" viewBox="0 0 290 290" xmlns="http://www.w3.org/2000/svg"><path fill="#ffffff" transform="translate(90 190) scale(4)" d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>'
+        fallback_cmd = (
+            "install -d /usr/share/plymouth/themes/spinner && "
+            f"printf '%s' {shlex.quote(apple_logo_svg)} > /tmp/apple-logo.svg && "
+            "rsvg-convert -w 290 -h 290 -b none -o /tmp/bgrt-fallback.png /tmp/apple-logo.svg && "
+            "install -Dm644 /tmp/bgrt-fallback.png /usr/share/plymouth/themes/spinner/bgrt-fallback.png && "
+            "plymouth-set-default-theme bgrt"
+        )
+        if not await self.run_in_chroot(fallback_cmd, timeout=600):
+            console.write("[WARN] Failed to set Plymouth BGRT fallback logo")
         console.write("Rebuilding initramfs to add Plymouth (This might take a while)...")
         if await self.run_in_chroot("mkinitcpio -P", timeout=600):
             console.write("Plymouth installed and initramfs rebuilt successfully!")
@@ -1537,6 +1900,13 @@ class T2ArchInstaller(App):
                     console.write("[WARN] Failed to update kernel on ESP")
                 if not await self.run_in_chroot("install -Dm0644 /boot/initramfs-linux-t2.img /boot/efi/initramfs-linux-t2.img"):
                     console.write("[WARN] Failed to update initramfs on ESP")
+                await self.run_in_chroot("[ -f /boot/initramfs-linux-t2-fallback.img ] && install -Dm0644 /boot/initramfs-linux-t2-fallback.img /boot/efi/initramfs-linux-t2-fallback.img || true")
+            elif self.bootloader_type == "limine":
+                console.write("Updating kernel/initramfs on ESP for Limine...")
+                if not await self.run_in_chroot("install -Dm0644 /boot/vmlinuz-linux-t2 /boot/efi/vmlinuz-linux-t2"):
+                    console.write("[WARN] Failed to update kernel on ESP for Limine")
+                if not await self.run_in_chroot("install -Dm0644 /boot/initramfs-linux-t2.img /boot/efi/initramfs-linux-t2.img"):
+                    console.write("[WARN] Failed to update initramfs on ESP for Limine")
                 await self.run_in_chroot("[ -f /boot/initramfs-linux-t2-fallback.img ] && install -Dm0644 /boot/initramfs-linux-t2-fallback.img /boot/efi/initramfs-linux-t2-fallback.img || true")
             self.query_one("#left_panel").focus()
             self.query_one(TabbedContent).active = "desktop_tab"
@@ -1575,13 +1945,52 @@ class T2ArchInstaller(App):
         self.query_one("#user_password_input").value = ""
         self.query_one("#no_de_btn").focus()
 
+    async def add_slsrepo_to_chroot(self) -> bool:
+        """Add the slsrepo repository to pacman."""
+        console = self.query_one("#console", RichLog)
+        repo_name = "slsrepo"
+        server_url = "https://arch.slsrepo.com/$arch"
+        use_chroot = not self.post_install_mode
+
+        # Check if repository already exists in chroot
+        exists, current_url = self.check_repo_in_pacman_conf(repo_name, chroot=use_chroot)
+
+        if exists and current_url is not None and current_url == server_url:
+            console.write(f"slsrepo repository already exists with correct URL. Skipping...")
+            if not await self.run_in_chroot("pacman -Sy"):
+                console.write("[ERROR] Failed to refresh pacman databases after slsrepo check.")
+                return False
+            return True
+        elif exists and (current_url is None or current_url != server_url):
+            console.write(f"slsrepo repository exists but URL is missing or different. Updating/adding Server line...")
+            if await self.update_repo_in_pacman_conf(repo_name, server_url, chroot=use_chroot):
+                console.write(f"slsrepo repository URL updated successfully!")
+                if not await self.run_in_chroot("pacman -Sy"):
+                    console.write("[ERROR] Failed to refresh pacman databases after slsrepo update.")
+                    return False
+                return True
+            else:
+                console.write(f"[ERROR] Failed to update slsrepo repository URL.")
+                return False
+        else:
+            console.write(f"Adding slsrepo repository...")
+            repo_config = self.build_repo_config(repo_name, server_url)
+            if not await self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf"):
+                console.write("[ERROR] Failed to add slsrepo repository to pacman.conf.")
+                return False
+            if not await self.run_in_chroot("pacman -Sy"):
+                console.write("[ERROR] Failed to refresh pacman databases after adding slsrepo.")
+                return False
+            console.write(f"slsrepo repository added to the system's pacman successfully!")
+            return True
+
     def wm_shared_packages(self) -> list[str]:
         """Packages for window managers (Niri)"""
         return [
             "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk",
             "pipewire", "pipewire-alsa", "pipewire-pulse", "pipewire-zeroconf", "wireplumber", "gvfs", "ffmpeg",
             "polkit", "polkit-gnome", "swaync", "swayosd", "noto-fonts", "ttf-dejavu", "noto-fonts-emoji", "inter-font", "otf-font-awesome",
-            "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel", "ghostty", "wayvnc", "jq", "brightnessctl", "ranger",
+            "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel", "ghostty", "foot", "wayvnc", "jq", "brightnessctl", "ranger",
             "pavucontrol", "pamixer", "pulsemixer", "swww", "swappy", "satty", "kimageformats", "wf-recorder", "mpv", "mpd", "playerctl", "cava",
             "cliphist", "udiskie", "cups-pk-helper", "network-manager-applet", "khal", "python-pywal", "pastel", "matugen",
             "wlr-randr", "wtype", "wlsunset", "dialog", "ddcutil", "i2c-tools", "power-profiles-daemon", "dgop"
@@ -1648,38 +2057,38 @@ Environment=LIBSEAT_BACKEND=logind
         console.write("greetd configured with DMS greeter successfully!")
         return True
 
-    async def wm_install_greetd_slgreeter_qml(self) -> bool:
+    async def wm_install_greetd_sl_greeter(self) -> bool:
         """
-        Setup greetd with sl-greeter-qml (QML version) for Niri.
+        Setup greetd with sl-greeter for Niri.
         Downloads and installs from slsrepo.com.
         """
         console = self.query_one("#console", RichLog)
-        console.write("Setting up greetd with sl-greeter-qml (QML version)...")
+        console.write("Setting up greetd with sl-greeter...")
 
         if not self.username:
             console.write("[ERROR] Username not set; create user first.")
             return False
 
         # Install dependencies: greetd, quickshell, and niri
-        if not await self.run_in_chroot("pacman -S --noconfirm --needed greetd quickshell niri unzip"):
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed greetd quickshell niri unzip archlinux-wallpaper"):
             console.write("[ERROR] Failed to install required greeter dependencies (greetd, quickshell, niri, unzip)")
             return False
 
-        # Download and install sl-greeter-qml
-        console.write("Downloading sl-greeter-qml from slsrepo.com...")
+        # Download and install sl-greeter
+        console.write("Downloading sl-greeter from slsrepo.com...")
         install_greeter_cmd = (
-            "curl -fsSL https://slsrepo.com/sl-greeter-qml.zip -o sl-greeter-qml.zip && "
-            "if [ -d sl-greeter-qml ]; then rm -rf sl-greeter-qml; fi && "
-            "unzip sl-greeter-qml.zip && "
-            "cp -r sl-greeter-qml /etc/greetd/ && "
-            "cp sl-greeter-qml/niri-greeter.kdl /etc/greetd/ && "
-            "rm -rf sl-greeter-qml sl-greeter-qml.zip"
+            "curl -fsSL https://slsrepo.com/sl-greeter.zip -o sl-greeter.zip && "
+            "if [ -d sl-greeter ]; then rm -rf sl-greeter; fi && "
+            "unzip sl-greeter.zip && "
+            "cp -r sl-greeter /etc/greetd/ && "
+            "cp sl-greeter/niri-greeter.kdl /etc/greetd/ && "
+            "rm -rf sl-greeter sl-greeter.zip"
         )
         if not await self.run_in_chroot(install_greeter_cmd, timeout=300):
-            console.write("[ERROR] Failed to install sl-greeter-qml")
+            console.write("[ERROR] Failed to install sl-greeter")
             return False
 
-        # Configure greetd to use sl-greeter-qml with niri
+        # Configure greetd to use sl-greeter with niri
         config_toml = """[terminal]
 vt = 2
 
@@ -1711,12 +2120,36 @@ Environment=LIBSEAT_BACKEND=logind
             console.write(f"[ERROR] Writing greeter config files failed: {e}")
             return False
 
-        # Set up directory structure for user (wallpaper symlink can be created later by user if desired)
-        if not await self.run_in_chroot(
-            f"mkdir -p /home/{self.username}/.local && "
-            f"chown -R {self.username}:{self.username} /home/{self.username}/.local"
-        ):
-            console.write("[WARN] Could not create .local directory")
+        # Set up directory structure for the user with default wallpaper, and chained symlinks
+        username = self.username
+        safe_username = shlex.quote(username)
+        user_home = f"/home/{username}"
+        user_local = f"{user_home}/.local"
+        user_bin = f"{user_local}/bin"
+        safe_user_local = shlex.quote(user_local)
+        safe_user_bin = shlex.quote(user_bin)
+        safe_user_current_bg = shlex.quote(f"{user_bin}/current-background")
+        setup_wallpaper_cmd = (
+            "mkdir -p /usr/local/share/backgrounds && "
+            f"chown {safe_username}:{safe_username} /usr/local/share/backgrounds && "
+            "ln -sf /usr/share/backgrounds/archlinux/simple.png /usr/local/share/backgrounds/sl-greeter-current-background && "
+            "ln -sf /usr/local/share/backgrounds/sl-greeter-current-background /etc/greetd/sl-greeter/current-background && "
+            f"mkdir -p {safe_user_bin} && "
+            f"ln -sf /usr/local/share/backgrounds/sl-greeter-current-background {safe_user_current_bg} && "
+            f"chown -R {safe_username}:{safe_username} {safe_user_local}"
+        )
+        if not await self.run_in_chroot(setup_wallpaper_cmd):
+            console.write("[WARN] Could not setup user directories and wallpaper symlinks")
+
+        console.write("Configuring greetd PAM to unlock GNOME Keyring...")
+        pam_config_cmd = (
+            "(grep -Eq '^[[:space:]]*auth[[:space:]]+optional[[:space:]]+pam_gnome_keyring\\.so([[:space:]]|$)' /etc/pam.d/greetd || "
+            "echo 'auth optional pam_gnome_keyring.so' >> /etc/pam.d/greetd) && "
+            "(grep -Eq '^[[:space:]]*session[[:space:]]+optional[[:space:]]+pam_gnome_keyring\\.so[[:space:]]+auto_start([[:space:]]|$)' /etc/pam.d/greetd || "
+            "echo 'session optional pam_gnome_keyring.so auto_start' >> /etc/pam.d/greetd)"
+        )
+        if not await self.run_in_chroot(pam_config_cmd):
+            console.write("[WARN] Failed to configure PAM for GNOME Keyring")
 
         if not await self.run_in_chroot(
             "mkdir -p /var/lib/greetd/.config && "
@@ -1731,114 +2164,30 @@ Environment=LIBSEAT_BACKEND=logind
             console.write("[ERROR] Failed to enable greetd.service")
             return False
 
-        console.write("greetd with sl-greeter-qml installed and configured successfully!")
+        console.write("greetd with sl-greeter installed and configured successfully!")
         return True
 
-    async def wm_install_greetd_tuigreet(self) -> bool:
+    async def wm_install_sl_lock(self) -> bool:
+        """
+        Setup sl-lock for Niri.
+        Downloads and installs from slsrepo.com.
+        """
         console = self.query_one("#console", RichLog)
-        console.write("Setting up greetd + Tuigreet with safe fallback...")
-
-        if not await self.run_in_chroot("pacman -S --noconfirm --needed greetd greetd-tuigreet"):
-            console.write("[ERROR] Failed to install greetd/tuigreet")
-            return False
-
-        config_toml = """[terminal]
-    vt = 2
-
-    [default_session]
-    command = "/usr/local/bin/greeter-launch"
-    user = "greeter"
-    """
-
-        environments = """\
-niri-session
-    """
-
-        override_conf = """[Unit]
-    After=systemd-user-sessions.service plymouth-quit.service plymouth-quit-wait.service
-    Conflicts=getty@tty2.service
-
-    [Service]
-    Environment=LIBSEAT_BACKEND=logind
-    """
-
-        greeter_launch = """#!/bin/bash
-    set -euo pipefail
-
-    status=1
-    if command -v /usr/bin/tuigreet >/dev/null 2>&1; then
-      /usr/bin/tuigreet --time --remember "$@" && status=0 || status=$?
-      echo "tuigreet exited with status ${status}" >&2
-    else
-      echo "tuigreet not found; falling back to agreety" >&2
-    fi
-
-    # Success -> exit; otherwise fallback to agreety (simple TUI login)
-    if [ "${status}" -eq 0 ]; then
-      exit 0
-    fi
-
-    exec /usr/bin/agreety --cmd "/bin/sh -l"
-    """
-
-        try:
-            target_root = self._get_target_root()
-            greetd_dir = os.path.join(target_root, "etc", "greetd")
-            os.makedirs(greetd_dir, exist_ok=True)
-            with open(os.path.join(greetd_dir, "config.toml"), "w", encoding="utf-8", newline="\n") as f:
-                f.write(config_toml)
-            with open(os.path.join(greetd_dir, "environments"), "w", encoding="utf-8", newline="\n") as f:
-                f.write(environments)
-
-            override_dir = os.path.join(target_root, "etc", "systemd", "system", "greetd.service.d")
-            os.makedirs(override_dir, exist_ok=True)
-            with open(os.path.join(override_dir, "override.conf"), "w", encoding="utf-8", newline="\n") as f:
-                f.write(override_conf)
-
-            greeter_launch_dir = os.path.join(target_root, "usr", "local", "bin")
-            os.makedirs(greeter_launch_dir, exist_ok=True)
-            with open(os.path.join(greeter_launch_dir, "greeter-launch"), "w", encoding="utf-8", newline="\n") as f:
-                f.write(greeter_launch)
-        except Exception as e:
-            console.write(f"[ERROR] Writing greetd/tuigreet files failed: {e}")
-            return False
-
-        if not await self.run_in_chroot(
-            "chmod 0755 /usr/local/bin/greeter-launch && "
-            "chown root:root /usr/local/bin/greeter-launch && "
-            "systemctl daemon-reload && "
-            "systemctl disable --now getty@tty2.service 2>/dev/null || true"
-        ):
-            console.write("[WARN] Could not finalize greeter script/disable getty@tty2")
-
-        if not await self.run_in_chroot("systemctl enable greetd.service"):
-            console.write("[ERROR] Failed to enable greetd.service")
-            return False
-
-        console.write("greetd installed and configured on VT2 (logind backend) with Tuigreet and agreety fallback (for journal logging) successfully!")
-        return True
-
-    async def install_niri(self) -> bool:
-        console = self.query_one("#console", RichLog)
-        # console.write("Installing Niri... This might take a while.")
+        console.write("Setting up sl-lock...")
 
         if not self.username:
             console.write("[ERROR] Username not set; create user first.")
             return False
 
-        packages = " ".join(self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring"])
-        if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages}", timeout=1800):
-            console.write("[ERROR] Failed to install Niri packages.")
+        # Add Sl’s Arch Repository to chroot
+        if not await self.add_slsrepo_to_chroot():
+            console.write("[ERROR] Failed to add Sl's Arch Repository")
             return False
 
-        # Install sl-greeter-qml (QML version)
-        if not await self.wm_install_greetd_slgreeter_qml():
-            console.write("[ERROR] Failed to install sl-greeter.")
+        # Install dependencies: quickshell, niri, unzip, archlinux-wallpaper, and wayidle-git
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed quickshell niri unzip archlinux-wallpaper wayidle-git"):
+            console.write("[ERROR] Failed to install required sl-lock dependencies (quickshell, niri, unzip, archlinux-wallpaper, wayidle-git)")
             return False
-
-        console.write("Creating Niri configuration...")
-        niri_config_dir = f"/home/{self.username}/.config/niri"
-        niri_config_url = "https://raw.githubusercontent.com/niri-wm/niri/main/resources/default-config.kdl"
 
         # Download and install sl-lock
         console.write("Downloading and installing sl-lock...")
@@ -1858,6 +2207,106 @@ niri-session
         if not await self.run_in_chroot(install_lock_cmd, timeout=300):
             console.write("[WARN] Failed to install sl-lock, continuing...")
 
+        console.write("Creating sl-lock-listener - custom DBus lock listener...")
+        lock_listener = """#!/bin/bash
+# Listens for systemd-logind lock signals
+
+# Try to determine the current session path from XDG_SESSION_ID.
+SESSION_PATH=""
+if [ -n "$XDG_SESSION_ID" ]; then
+    SESSION_PATH=$(loginctl show-session "$XDG_SESSION_ID" -p Path --value 2>/dev/null || echo "")
+fi
+
+if [ -n "$SESSION_PATH" ]; then
+    # Monitor only this session's Lock signals
+    dbus-monitor --system "path='$SESSION_PATH',type='signal',interface='org.freedesktop.login1.Session',member='Lock'" |
+    grep --line-buffered "member=Lock" |
+    while read -r line; do
+        # Simple single-instance guard: avoid spawning another qs if one is already running
+        if ! pgrep -x qs >/dev/null 2>&1; then
+            qs -c sl-lock &
+        fi
+    done
+else
+    # Fallback: monitor all session Lock signals (legacy behavior) but still guard qs
+    dbus-monitor --system "type='signal',interface='org.freedesktop.login1.Session',member='Lock'" |
+    grep --line-buffered "member=Lock" |
+    while read -r line; do
+        if ! pgrep -x qs >/dev/null 2>&1; then
+            qs -c sl-lock &
+        fi
+    done
+fi
+"""
+        if not await self.run_in_chroot(f"install -Dm755 /dev/stdin /usr/local/bin/sl-lock-listener <<'EOF'\n{lock_listener}\nEOF"):
+            console.write("[WARN] Failed to create sl-lock-listener")
+
+        console.write("Creating sl-sleep-lock service...")
+        sl_sleep_lock_service = """[Unit]
+Description=Lock sessions before sleep
+Before=sleep.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/loginctl lock-sessions
+
+[Install]
+WantedBy=sleep.target
+"""
+        if not await self.run_in_chroot(f"install -Dm644 /dev/stdin /etc/systemd/system/sl-sleep-lock.service <<'EOF'\n{sl_sleep_lock_service}\nEOF"):
+            console.write("[WARN] Failed to create sl-sleep-lock service")
+        else:
+            await self.run_in_chroot("systemctl enable sl-sleep-lock.service")
+
+        console.write("Creating sl-idle-lock...")
+        idle_lock = """#!/bin/bash
+# Independent idle daemon using wayidle and loginctl
+# Usage: sl-idle-lock [timeout_in_seconds]
+
+TIMEOUT=${1:-300}
+
+while true; do
+    /usr/bin/wayidle -t "$TIMEOUT"
+    loginctl lock-session
+    while [ "$(loginctl show-session "$XDG_SESSION_ID" -p LockedHint)" = "LockedHint=yes" ]; do
+        sleep 2
+    done
+    sleep 2
+done
+"""
+        if not await self.run_in_chroot(f"install -Dm755 /dev/stdin /usr/local/bin/sl-idle-lock <<'EOF'\n{idle_lock}\nEOF"):
+            console.write("[WARN] Failed to create sl-idle-lock")
+
+        console.write("sl-lock installed and configured successfully!")
+        return True
+
+    async def install_niri(self) -> bool:
+        console = self.query_one("#console", RichLog)
+        # console.write("Installing Niri... This might take a while.")
+
+        if not self.username:
+            console.write("[ERROR] Username not set; create user first.")
+            return False
+
+        packages = " ".join(self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring"])
+        if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages}", timeout=1800):
+            console.write("[ERROR] Failed to install Niri packages.")
+            return False
+
+        # Install sl-greeter
+        if not await self.wm_install_greetd_sl_greeter():
+            console.write("[ERROR] Failed to install sl-greeter.")
+            return False
+
+        console.write("Creating Niri configuration...")
+        niri_config_dir = f"/home/{self.username}/.config/niri"
+        niri_config_url = "https://raw.githubusercontent.com/niri-wm/niri/main/resources/default-config.kdl"
+
+        # Download and install sl-lock
+        if not await self.wm_install_sl_lock():
+            console.write("[ERROR] Failed to install sl-lock.")
+            return False
+
         # Create config, replace alacritty with ghostty, and replace swaylock with sl-lock
         create_config_cmd = (
             f"mkdir -p {niri_config_dir} && "
@@ -1865,7 +2314,9 @@ niri-session
             f"sed -i 's/alacritty/ghostty/g' {niri_config_dir}/config.kdl && "
             f"sed -i 's/Screen: swaylock/Screen: sl-lock/g' {niri_config_dir}/config.kdl && "
             f"sed -i 's/spawn \"swaylock\"/spawn-sh \"qs -c sl-lock\"/g' {niri_config_dir}/config.kdl && "
-            f"echo -e '\\nspawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"\\n' >> {niri_config_dir}/config.kdl && "
+            f"sed -i 's|// spawn-at-startup \"swayidle\".*|// Show Lock screen after 5 minutes\\n    spawn-at-startup \"sl-idle-lock\" \"300\"\\n\\n    // Turn off monitors after 6 minutes\\n    spawn-at-startup \"sh\" \"-c\" \"while true; do wayidle -t 360 niri msg action power-off-monitors; done\"|g' {niri_config_dir}/config.kdl && "
+            f"(grep -q 'spawn-at-startup \"sl-lock-listener\"' {niri_config_dir}/config.kdl || echo 'spawn-at-startup \"sl-lock-listener\"' >> {niri_config_dir}/config.kdl) && "
+            f"(grep -q 'spawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"' {niri_config_dir}/config.kdl || echo 'spawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"' >> {niri_config_dir}/config.kdl) && "
             f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
         )
         if not await self.run_in_chroot(create_config_cmd):
@@ -1873,45 +2324,6 @@ niri-session
 
         console.write("Niri installed successfully!")
         return True
-
-    async def add_slsrepo_to_chroot(self) -> bool:
-        """Add the slsrepo repository to pacman."""
-        console = self.query_one("#console", RichLog)
-        repo_name = "slsrepo"
-        server_url = "https://arch.slsrepo.com/$arch"
-        use_chroot = not self.post_install_mode
-
-        # Check if repository already exists in chroot
-        exists, current_url = self.check_repo_in_pacman_conf(repo_name, chroot=use_chroot)
-
-        if exists and current_url is not None and current_url == server_url:
-            console.write(f"slsrepo repository already exists with correct URL. Skipping...")
-            if not await self.run_in_chroot("pacman -Sy"):
-                console.write("[ERROR] Failed to refresh pacman databases after slsrepo check.")
-                return False
-            return True
-        elif exists and (current_url is None or current_url != server_url):
-            console.write(f"slsrepo repository exists but URL is missing or different. Updating/adding Server line...")
-            if await self.update_repo_in_pacman_conf(repo_name, server_url, chroot=use_chroot):
-                console.write(f"slsrepo repository URL updated successfully!")
-                if not await self.run_in_chroot("pacman -Sy"):
-                    console.write("[ERROR] Failed to refresh pacman databases after slsrepo update.")
-                    return False
-                return True
-            else:
-                console.write(f"[ERROR] Failed to update slsrepo repository URL.")
-                return False
-        else:
-            console.write(f"Adding slsrepo repository...")
-            repo_config = self.build_repo_config(repo_name, server_url)
-            if not await self.run_in_chroot(f"echo -e '{repo_config}' >> /etc/pacman.conf"):
-                console.write("[ERROR] Failed to add slsrepo repository to pacman.conf.")
-                return False
-            if not await self.run_in_chroot("pacman -Sy"):
-                console.write("[ERROR] Failed to refresh pacman databases after adding slsrepo.")
-                return False
-            console.write(f"slsrepo repository added to the system's pacman successfully!")
-            return True
 
     async def install_niri_with_dms(self) -> bool:
         """Install Niri with DankMaterialShell (DMS) from slsrepo."""
@@ -1936,7 +2348,7 @@ niri-session
 
         # Install DMS, QuickShell, and dependencies from Sl's Arch Repository
         console.write("Installing DMS, QuickShell, and dependencies from Sl's Arch Repository...")
-        dms_packages = "quickshell-git dms-shell-bin matugen greetd dsearch-git greetd-dms-greeter-git"
+        dms_packages = "quickshell-git dms-shell-bin matugen greetd dsearch-bin greetd-dms-greeter-git"
 
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {dms_packages}", timeout=600):
             console.write("[ERROR] Failed to install DMS packages")
@@ -2034,9 +2446,9 @@ niri-session
         """Install additional packages."""
         console = self.query_one("#console", RichLog)
         commands = [
-                    "pacman -S --noconfirm --needed ffmpeg pipewire pipewire-zeroconf ghostty fastfetch",
+                    "pacman -S --noconfirm --needed ffmpeg pipewire pipewire-zeroconf ghostty fastfetch chafa",
                     ]
-        if self.filesystem_type == "btrfs":
+        if await self.target_root_uses_btrfs():
             commands.append("pacman -S --noconfirm --needed snap-pac")
         console.write("Installing extras...")
         for cmd in commands:
