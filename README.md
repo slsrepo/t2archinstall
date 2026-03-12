@@ -2,7 +2,7 @@
 
 A user-friendly, terminal-based installer for [Arch Linux](https://wiki.archlinux.org/index.php/Arch_Linux) on Intel Macs equipped with the T2 Security Chip.
 
-The installer provides a guided step-by-step process using a multi-tab interface that guides you through every stage of the installation, from partitioning to desktop environment setup, while incorportaing all the tweaks that are specific to the T2 hardware.
+The installer provides a guided step-by-step process using a multi-tab interface that guides you through every stage of the installation, from partitioning to desktop environment setup, while incorporating all the tweaks that are specific to the T2 hardware.
 
 ## Prerequisites
 
@@ -41,7 +41,7 @@ bin/python t2archinstall.py
 
 * Inspired by [archinstall](https://github.com/archlinux/archinstall).
 * [Textual](https://textual.textualize.io) made it easy to write the UI.
-* Thanks to the [T2Linux community](https://wiki.t2linux.org/) and especially [AdityaGarg8](https://github.com/AdityaGarg8) for the guidance and support.
+* Thanks to the [T2Linux community](https://wiki.t2linux.org/) and especially to [AdityaGarg8](https://github.com/AdityaGarg8) and [NoaHimesaka1873](https://github.com/NoaHimesaka1873) for the guidance and support.
 * Thanks to the Arch Linux community for [the fantastic wiki](https://wiki.archlinux.org/) too.
 
 ## References
