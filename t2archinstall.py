@@ -103,6 +103,7 @@ class T2ArchInstaller(App):
     def __init__(self):
         super().__init__()
         self.post_install_mode = False
+        self.extras_completion_redirected = False
         self.disk = ""
         self.partition_mode = "partition_with_swap"
         self.root_partition = ""
@@ -133,10 +134,15 @@ class T2ArchInstaller(App):
                             yield Static("")
                             yield Static("Target disk (e.g. /dev/nvme0n1 or /dev/sda):")
                             yield Input(placeholder="Enter disk path", id="disk_input")
+                            yield Static("Use 'Prepare Partitions' to create Linux partitions in the free space you set aside in macOS.")
+                            yield Static("Your macOS and other existing partitions will not be touched.")
+                            yield Static("")
+                            yield Static("If you already prepared these Linux partitions, you can skip this step by choosing 'Mount Existing'.")
+                            yield Static("")
                             yield Static("Installation mode:")
-                            yield Button("Partition Disk", id="partition_btn")
+                            yield Button("Prepare Partitions", id="partition_btn")
                             yield Button("Mount Existing", id="mount_btn")
-                            yield Button("Already Installed (Run commands on current system)", id="post_install_btn")
+                            yield Button("Already Installed (Run commands on the current system)", id="post_install_btn")
 
                     with TabPane("Partition", id="partition_tab"):
                         with VerticalScroll(id="partition_scroll", can_focus=False):
@@ -353,6 +359,19 @@ class T2ArchInstaller(App):
         tabs = self.query_one(TabbedContent)
         if 0 <= index < len(self.tab_ids):
             tabs.active = self.tab_ids[index]
+
+    def maybe_redirect_completion_from_extras(self) -> None:
+        """Redirect to completion only once for extras actions, while restoring focus."""
+        left_panel = self.query_one("#left_panel")
+        focus_was_cleared = self.screen.focused is None
+        first_extras_redirect = not self.extras_completion_redirected
+        if not first_extras_redirect:
+            if focus_was_cleared:
+                left_panel.focus()
+            return
+        left_panel.focus()
+        self.query_one(TabbedContent).active = "completion_tab"
+        self.extras_completion_redirected = True
 
     async def run_command(self, command: str, timeout: int = 300) -> bool:
         """Run a shell command and display its output in the console."""
@@ -777,8 +796,7 @@ class T2ArchInstaller(App):
         elif button_id == "tiny_dfr_btn": await self.install_tiny_dfr()
         elif button_id == "add_slsrepo_btn":
             if await self.add_slsrepo_to_chroot():
-                self.query_one("#left_panel").focus()
-                self.query_one(TabbedContent).active = "completion_tab"
+                self.maybe_redirect_completion_from_extras()
             else:
                 self.query_one("#add_slsrepo_btn").focus()
         elif button_id == "enable_hybrid_graphics_btn":
@@ -1988,10 +2006,10 @@ class T2ArchInstaller(App):
         """Packages for window managers (Niri)"""
         return [
             "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk",
-            "pipewire", "pipewire-alsa", "pipewire-pulse", "pipewire-zeroconf", "wireplumber", "gvfs", "ffmpeg",
+            "pipewire", "pipewire-alsa", "pipewire-pulse", "pipewire-zeroconf", "wireplumber", "gvfs", "ffmpeg", "accountsservice",
             "polkit", "polkit-gnome", "swaync", "swayosd", "noto-fonts", "ttf-dejavu", "noto-fonts-emoji", "inter-font", "otf-font-awesome",
-            "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel", "ghostty", "foot", "wayvnc", "jq", "brightnessctl", "ranger",
-            "pavucontrol", "pamixer", "pulsemixer", "swww", "swappy", "satty", "kimageformats", "wf-recorder", "mpv", "mpd", "playerctl", "cava",
+            "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel", "ghostty", "foot", "wayvnc", "jq", "brightnessctl", "duf",
+            "pavucontrol", "pamixer", "pulsemixer", "awww", "swappy", "satty", "kimageformats", "wf-recorder", "mpv", "mpd", "playerctl", "cava",
             "cliphist", "udiskie", "cups-pk-helper", "network-manager-applet", "khal", "python-pywal", "pastel", "matugen",
             "wlr-randr", "wtype", "wlsunset", "dialog", "ddcutil", "i2c-tools", "power-profiles-daemon", "dgop"
         ]
@@ -2057,123 +2075,12 @@ Environment=LIBSEAT_BACKEND=logind
         console.write("greetd configured with DMS greeter successfully!")
         return True
 
-    async def wm_install_greetd_sl_greeter(self) -> bool:
+    async def wm_install_sl_desktop_utils(self) -> bool:
         """
-        Setup greetd with sl-greeter for Niri.
-        Downloads and installs from slsrepo.com.
-        """
-        console = self.query_one("#console", RichLog)
-        console.write("Setting up greetd with sl-greeter...")
-
-        if not self.username:
-            console.write("[ERROR] Username not set; create user first.")
-            return False
-
-        # Install dependencies: greetd, quickshell, and niri
-        if not await self.run_in_chroot("pacman -S --noconfirm --needed greetd quickshell niri unzip archlinux-wallpaper"):
-            console.write("[ERROR] Failed to install required greeter dependencies (greetd, quickshell, niri, unzip)")
-            return False
-
-        # Download and install sl-greeter
-        console.write("Downloading sl-greeter from slsrepo.com...")
-        install_greeter_cmd = (
-            "curl -fsSL https://slsrepo.com/sl-greeter.zip -o sl-greeter.zip && "
-            "if [ -d sl-greeter ]; then rm -rf sl-greeter; fi && "
-            "unzip sl-greeter.zip && "
-            "cp -r sl-greeter /etc/greetd/ && "
-            "cp sl-greeter/niri-greeter.kdl /etc/greetd/ && "
-            "rm -rf sl-greeter sl-greeter.zip"
-        )
-        if not await self.run_in_chroot(install_greeter_cmd, timeout=300):
-            console.write("[ERROR] Failed to install sl-greeter")
-            return False
-
-        # Configure greetd to use sl-greeter with niri
-        config_toml = """[terminal]
-vt = 2
-
-[default_session]
-command = "niri -c /etc/greetd/niri-greeter.kdl > /dev/null 2>&1"
-user = "greeter"
-"""
-
-        override_conf = """[Unit]
-After=systemd-user-sessions.service plymouth-quit.service plymouth-quit-wait.service
-Conflicts=getty@tty2.service
-
-[Service]
-Environment=LIBSEAT_BACKEND=logind
-"""
-
-        try:
-            target_root = self._get_target_root()
-            greetd_dir = os.path.join(target_root, "etc", "greetd")
-            os.makedirs(greetd_dir, exist_ok=True)
-            with open(os.path.join(greetd_dir, "config.toml"), "w", encoding="utf-8", newline="\n") as f:
-                f.write(config_toml)
-
-            override_dir = os.path.join(target_root, "etc", "systemd", "system", "greetd.service.d")
-            os.makedirs(override_dir, exist_ok=True)
-            with open(os.path.join(override_dir, "override.conf"), "w", encoding="utf-8", newline="\n") as f:
-                f.write(override_conf)
-        except Exception as e:
-            console.write(f"[ERROR] Writing greeter config files failed: {e}")
-            return False
-
-        # Set up directory structure for the user with default wallpaper, and chained symlinks
-        username = self.username
-        safe_username = shlex.quote(username)
-        user_home = f"/home/{username}"
-        user_local = f"{user_home}/.local"
-        user_bin = f"{user_local}/bin"
-        safe_user_local = shlex.quote(user_local)
-        safe_user_bin = shlex.quote(user_bin)
-        safe_user_current_bg = shlex.quote(f"{user_bin}/current-background")
-        setup_wallpaper_cmd = (
-            "mkdir -p /usr/local/share/backgrounds && "
-            f"chown {safe_username}:{safe_username} /usr/local/share/backgrounds && "
-            "ln -sf /usr/share/backgrounds/archlinux/simple.png /usr/local/share/backgrounds/sl-greeter-current-background && "
-            "ln -sf /usr/local/share/backgrounds/sl-greeter-current-background /etc/greetd/sl-greeter/current-background && "
-            f"mkdir -p {safe_user_bin} && "
-            f"ln -sf /usr/local/share/backgrounds/sl-greeter-current-background {safe_user_current_bg} && "
-            f"chown -R {safe_username}:{safe_username} {safe_user_local}"
-        )
-        if not await self.run_in_chroot(setup_wallpaper_cmd):
-            console.write("[WARN] Could not setup user directories and wallpaper symlinks")
-
-        console.write("Configuring greetd PAM to unlock GNOME Keyring...")
-        pam_config_cmd = (
-            "(grep -Eq '^[[:space:]]*auth[[:space:]]+optional[[:space:]]+pam_gnome_keyring\\.so([[:space:]]|$)' /etc/pam.d/greetd || "
-            "echo 'auth optional pam_gnome_keyring.so' >> /etc/pam.d/greetd) && "
-            "(grep -Eq '^[[:space:]]*session[[:space:]]+optional[[:space:]]+pam_gnome_keyring\\.so[[:space:]]+auto_start([[:space:]]|$)' /etc/pam.d/greetd || "
-            "echo 'session optional pam_gnome_keyring.so auto_start' >> /etc/pam.d/greetd)"
-        )
-        if not await self.run_in_chroot(pam_config_cmd):
-            console.write("[WARN] Failed to configure PAM for GNOME Keyring")
-
-        if not await self.run_in_chroot(
-            "mkdir -p /var/lib/greetd/.config && "
-            "chown -R greeter:greeter /var/lib/greetd/ && "
-            "chown -R greeter:greeter /etc/greetd/ && "
-            "systemctl daemon-reload && "
-            "systemctl disable --now getty@tty2.service 2>/dev/null || true"
-        ):
-            console.write("[WARN] Could not finalize permissions or disable getty@tty2")
-
-        if not await self.run_in_chroot("systemctl enable greetd.service"):
-            console.write("[ERROR] Failed to enable greetd.service")
-            return False
-
-        console.write("greetd with sl-greeter installed and configured successfully!")
-        return True
-
-    async def wm_install_sl_lock(self) -> bool:
-        """
-        Setup sl-lock for Niri.
-        Downloads and installs from slsrepo.com.
+        Installs sl-desktop-utils (sl-greeter, sl-lock and the sl-lock services) from Sl's Arch Repository (slsrepo).
         """
         console = self.query_one("#console", RichLog)
-        console.write("Setting up sl-lock...")
+        console.write("Setting up sl-greeter and sl-lock by installing sl-desktop-utils...")
 
         if not self.username:
             console.write("[ERROR] Username not set; create user first.")
@@ -2184,100 +2091,74 @@ Environment=LIBSEAT_BACKEND=logind
             console.write("[ERROR] Failed to add Sl's Arch Repository")
             return False
 
-        # Install dependencies: quickshell, niri, unzip, archlinux-wallpaper, and wayidle-git
-        if not await self.run_in_chroot("pacman -S --noconfirm --needed quickshell niri unzip archlinux-wallpaper wayidle-git"):
-            console.write("[ERROR] Failed to install required sl-lock dependencies (quickshell, niri, unzip, archlinux-wallpaper, wayidle-git)")
+        # Install the sl-desktop-utils package and its dependencies
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed quickshell-git qt6-multimedia niri sl-desktop-utils unzip wayidle-git"):
+            console.write("[ERROR] Failed to install sl-desktop-utils")
             return False
 
-        # Download and install sl-lock
-        console.write("Downloading and installing sl-lock...")
-        install_lock_cmd = (
-            "rm -rf sl-lock && "
-            "curl -fsSL https://slsrepo.com/sl-lock.zip -o sl-lock.zip && "
-            "unzip sl-lock.zip && "
-            f"mkdir -p /home/{self.username}/.config/quickshell && "
-            f"if [ -d /home/{self.username}/.config/quickshell/sl-lock ]; then "
-            f"mv /home/{self.username}/.config/quickshell/sl-lock "
-            f"/home/{self.username}/.config/quickshell/sl-lock.bak-$(date +%s); "
-            "fi && "
-            f"mv sl-lock /home/{self.username}/.config/quickshell/ && "
-            f"chown -R {self.username}:{self.username} /home/{self.username}/.config/quickshell && "
-            "rm -rf sl-lock sl-lock.zip"
+        # Set up the user's local bin symlink for the wallpaper
+        username = self.username
+        setup_wallpaper_cmd = (
+            f"mkdir -p /home/{username}/.config/quickshell && "
+            f"cp -r /usr/share/quickshell/sl-lock /home/{username}/.config/quickshell && "
+            f"mkdir -p /home/{username}/.local/bin && "
+            f"ln -sf /usr/local/share/backgrounds/sl-greeter-current-background /home/{username}/.local/bin/current-background && "
+            f"chown -R {username}:{username} /home/{username}/.local"
         )
-        if not await self.run_in_chroot(install_lock_cmd, timeout=300):
-            console.write("[WARN] Failed to install sl-lock, continuing...")
+        if not await self.run_in_chroot(setup_wallpaper_cmd):
+            console.write("[WARN] Could not setup user wallpaper symlink")
 
-        console.write("Creating sl-lock-listener - custom DBus lock listener...")
-        lock_listener = """#!/bin/bash
-# Listens for systemd-logind lock signals
+        # Disable getty on tty2 and enable greetd
+        if not await self.run_in_chroot(
+            "systemctl disable --now getty@tty2.service 2>/dev/null || true && "
+            "systemctl enable greetd.service"
+        ):
+            console.write("[ERROR] Failed to enable greetd.service")
+            return False
 
-# Try to determine the current session path from XDG_SESSION_ID.
-SESSION_PATH=""
-if [ -n "$XDG_SESSION_ID" ]; then
-    SESSION_PATH=$(loginctl show-session "$XDG_SESSION_ID" -p Path --value 2>/dev/null || echo "")
-fi
+        console.write("sl-greeter and sl-lock installed and configured successfully!")
+        return True
+        
+    async def wm_install_sl_desktop_utils(self) -> bool:
+        """
+        Installs sl-desktop-utils (sl-greeter, sl-lock and the sl-lock services) from Sl's Arch Repository (slsrepo).
+        """
+        console = self.query_one("#console", RichLog)
+        console.write("Setting up sl-greeter and sl-lock by installing sl-desktop-utils...")
 
-if [ -n "$SESSION_PATH" ]; then
-    # Monitor only this session's Lock signals
-    dbus-monitor --system "path='$SESSION_PATH',type='signal',interface='org.freedesktop.login1.Session',member='Lock'" |
-    grep --line-buffered "member=Lock" |
-    while read -r line; do
-        # Simple single-instance guard: avoid spawning another qs if one is already running
-        if ! pgrep -x qs >/dev/null 2>&1; then
-            qs -c sl-lock &
-        fi
-    done
-else
-    # Fallback: monitor all session Lock signals (legacy behavior) but still guard qs
-    dbus-monitor --system "type='signal',interface='org.freedesktop.login1.Session',member='Lock'" |
-    grep --line-buffered "member=Lock" |
-    while read -r line; do
-        if ! pgrep -x qs >/dev/null 2>&1; then
-            qs -c sl-lock &
-        fi
-    done
-fi
-"""
-        if not await self.run_in_chroot(f"install -Dm755 /dev/stdin /usr/local/bin/sl-lock-listener <<'EOF'\n{lock_listener}\nEOF"):
-            console.write("[WARN] Failed to create sl-lock-listener")
+        if not self.username:
+            console.write("[ERROR] Username not set; create user first.")
+            return False
 
-        console.write("Creating sl-sleep-lock service...")
-        sl_sleep_lock_service = """[Unit]
-Description=Lock sessions before sleep
-Before=sleep.target
+        # Add Sl’s Arch Repository to chroot
+        if not await self.add_slsrepo_to_chroot():
+            console.write("[ERROR] Failed to add Sl's Arch Repository")
+            return False
 
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/loginctl lock-sessions
+        # Install the sl-desktop-utils package and its dependencies
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed quickshell-git niri sl-desktop-utils unzip wayidle-git"):
+            console.write("[ERROR] Failed to install sl-desktop-utils")
+            return False
 
-[Install]
-WantedBy=sleep.target
-"""
-        if not await self.run_in_chroot(f"install -Dm644 /dev/stdin /etc/systemd/system/sl-sleep-lock.service <<'EOF'\n{sl_sleep_lock_service}\nEOF"):
-            console.write("[WARN] Failed to create sl-sleep-lock service")
-        else:
-            await self.run_in_chroot("systemctl enable sl-sleep-lock.service")
+        # Set up the user's local bin symlink for the wallpaper
+        username = self.username
+        setup_wallpaper_cmd = (
+            f"mkdir -p /home/{username}/.local/bin && "
+            f"ln -sf /usr/local/share/backgrounds/sl-greeter-current-background /home/{username}/.local/bin/current-background && "
+            f"chown -R {username}:{username} /home/{username}/.local"
+        )
+        if not await self.run_in_chroot(setup_wallpaper_cmd):
+            console.write("[WARN] Could not setup user wallpaper symlink")
 
-        console.write("Creating sl-idle-lock...")
-        idle_lock = """#!/bin/bash
-# Independent idle daemon using wayidle and loginctl
-# Usage: sl-idle-lock [timeout_in_seconds]
+        # Disable getty on tty2 and enable greetd
+        if not await self.run_in_chroot(
+            "systemctl disable --now getty@tty2.service 2>/dev/null || true && "
+            "systemctl enable greetd.service"
+        ):
+            console.write("[ERROR] Failed to enable greetd.service")
+            return False
 
-TIMEOUT=${1:-300}
-
-while true; do
-    /usr/bin/wayidle -t "$TIMEOUT"
-    loginctl lock-session
-    while [ "$(loginctl show-session "$XDG_SESSION_ID" -p LockedHint)" = "LockedHint=yes" ]; do
-        sleep 2
-    done
-    sleep 2
-done
-"""
-        if not await self.run_in_chroot(f"install -Dm755 /dev/stdin /usr/local/bin/sl-idle-lock <<'EOF'\n{idle_lock}\nEOF"):
-            console.write("[WARN] Failed to create sl-idle-lock")
-
-        console.write("sl-lock installed and configured successfully!")
+        console.write("sl-greeter and sl-lock installed and configured successfully!")
         return True
 
     async def install_niri(self) -> bool:
@@ -2293,29 +2174,30 @@ done
             console.write("[ERROR] Failed to install Niri packages.")
             return False
 
-        # Install sl-greeter
-        if not await self.wm_install_greetd_sl_greeter():
-            console.write("[ERROR] Failed to install sl-greeter.")
+        # Install sl-greeter and sl-lock (sl-desktop-utils)
+        if not await self.wm_install_sl_desktop_utils():
+            console.write("[ERROR] Failed to install sl-desktop-utils (sl-greeter and sl-lock).")
             return False
 
         console.write("Creating Niri configuration...")
         niri_config_dir = f"/home/{self.username}/.config/niri"
         niri_config_url = "https://raw.githubusercontent.com/niri-wm/niri/main/resources/default-config.kdl"
 
-        # Download and install sl-lock
-        if not await self.wm_install_sl_lock():
-            console.write("[ERROR] Failed to install sl-lock.")
-            return False
-
         # Create config, replace alacritty with ghostty, and replace swaylock with sl-lock
+        username = self.username
+        safe_username = shlex.quote(username)
+        user_home = f"/home/{username}"
+        user_local = f"{user_home}/.local"
+        safe_user_local = shlex.quote(user_local)
         create_config_cmd = (
             f"mkdir -p {niri_config_dir} && "
+            f"chown {safe_username}:{safe_username} /usr/local/share/backgrounds && "
+            f"chown -R {safe_username}:{safe_username} {safe_user_local} && "
             f"curl -fsSL '{niri_config_url}' -o {niri_config_dir}/config.kdl && "
             f"sed -i 's/alacritty/ghostty/g' {niri_config_dir}/config.kdl && "
             f"sed -i 's/Screen: swaylock/Screen: sl-lock/g' {niri_config_dir}/config.kdl && "
             f"sed -i 's/spawn \"swaylock\"/spawn-sh \"qs -c sl-lock\"/g' {niri_config_dir}/config.kdl && "
             f"sed -i 's|// spawn-at-startup \"swayidle\".*|// Show Lock screen after 5 minutes\\n    spawn-at-startup \"sl-idle-lock\" \"300\"\\n\\n    // Turn off monitors after 6 minutes\\n    spawn-at-startup \"sh\" \"-c\" \"while true; do wayidle -t 360 niri msg action power-off-monitors; done\"|g' {niri_config_dir}/config.kdl && "
-            f"(grep -q 'spawn-at-startup \"sl-lock-listener\"' {niri_config_dir}/config.kdl || echo 'spawn-at-startup \"sl-lock-listener\"' >> {niri_config_dir}/config.kdl) && "
             f"(grep -q 'spawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"' {niri_config_dir}/config.kdl || echo 'spawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"' >> {niri_config_dir}/config.kdl) && "
             f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
         )
@@ -2339,7 +2221,7 @@ done
             return False
 
         # Install base packages (Niri + shared WM packages)
-        base_packages = self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring", "fprintd", "qt6-multimedia"]
+        base_packages = self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring", "fprintd", "qt6-multimedia", "adw-gtk-theme", "qt6ct-kde"]
         packages_str = " ".join(base_packages)
 
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages_str}", timeout=1800):
@@ -2348,7 +2230,7 @@ done
 
         # Install DMS, QuickShell, and dependencies from Sl's Arch Repository
         console.write("Installing DMS, QuickShell, and dependencies from Sl's Arch Repository...")
-        dms_packages = "quickshell-git dms-shell-bin matugen greetd dsearch-bin greetd-dms-greeter-git"
+        dms_packages = "quickshell-git dms-shell-bin matugen greetd dsearch-git greetd-dms-greeter-git"
 
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {dms_packages}", timeout=600):
             console.write("[ERROR] Failed to install DMS packages")
@@ -2362,19 +2244,26 @@ done
         console.write("Creating Niri configuration...")
         niri_config_dir = f"/home/{self.username}/.config/niri"
         niri_config_url = "https://raw.githubusercontent.com/niri-wm/niri/main/resources/default-config.kdl"
+        dms_include_files = ["colors", "layout", "alttab", "binds"]
+        dms_touch_targets = " ".join(f"{niri_config_dir}/dms/{name}.kdl" for name in dms_include_files)
+        dms_include_ensure_cmd = " && ".join(
+            f"(grep -q 'include \"dms/{name}.kdl\"' {niri_config_dir}/config.kdl || echo 'include \"dms/{name}.kdl\"' >> {niri_config_dir}/config.kdl)"
+            for name in dms_include_files
+        )
 
-        # Create config, replace alacritty with ghostty, and comment out waybar
-        # Note: DMS already includes its own lock screen, so no need to install sl-lock
+        # Create config, replace alacritty with ghostty and comment out waybar
         create_config_cmd = (
             f"mkdir -p {niri_config_dir} && "
+            f"mkdir -p {niri_config_dir}/dms && "
+            f"touch {dms_touch_targets} && "
             f"curl -fsSL '{niri_config_url}' -o {niri_config_dir}/config.kdl && "
             f"sed -i 's/alacritty/ghostty/g' {niri_config_dir}/config.kdl && "
-
             f"sed -i '/^[[:space:]]*spawn-at-startup[[:space:]]\\+\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
             f"sed -i '/^[[:space:]]*spawn-at-startup-sh[[:space:]]\\+\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
             f"sed -i '/^[[:space:]]*command[[:space:]]*\\(=\\|\\)[[:space:]]*\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
+            f"{dms_include_ensure_cmd} && "
+            f"(grep -q 'match namespace=\"^quickshell$\"' {niri_config_dir}/config.kdl || printf '\\nlayer-rule {{\\n    match namespace=\"^quickshell$\"\\n    place-within-backdrop true\\n}}\\n' >> {niri_config_dir}/config.kdl) && "
             f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
-            # f"echo -e '\\ninclude \"dms/colors.kdl\"\\ninclude \"dms/layout.kdl\"\\ninclude \"dms/alttab.kdl\"\\ninclude \"dms/binds.kdl\"\\n' >> {niri_config_dir}/config.kdl && "
         )
         if not await self.run_in_chroot(create_config_cmd):
             console.write("[WARN] Failed to create Niri config, continuing...")
@@ -2456,8 +2345,7 @@ done
                 console.write("[ERROR] Extras installation failed")
                 return
         console.write("Extras installed successfully!")
-        self.query_one("#left_panel").focus()
-        self.query_one(TabbedContent).active = "completion_tab"
+        self.maybe_redirect_completion_from_extras()
 
     async def install_tiny_dfr(self):
         """Install tiny-dfr and apply TouchBar defaults."""
@@ -2475,8 +2363,7 @@ done
                 return
         console.write("tiny-dfr installed successfully!")
         console.write("tiny-dfr config available in /etc/tiny-dfr/config.toml")
-        self.query_one("#left_panel").focus()
-        self.query_one(TabbedContent).active = "completion_tab"
+        self.maybe_redirect_completion_from_extras()
 
     async def recurring_network_notifications_fix(self):
         """Disable recurring notifications caused by the internal usb ethernet interface connected to the T2 chip."""
