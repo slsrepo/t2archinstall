@@ -368,6 +368,7 @@ class T2ArchInstaller(App):
         if not first_extras_redirect:
             if focus_was_cleared:
                 left_panel.focus()
+                self.query_one("#main_tabs").query_one("Tabs").focus()
             return
         left_panel.focus()
         self.query_one(TabbedContent).active = "completion_tab"
@@ -2005,13 +2006,13 @@ class T2ArchInstaller(App):
     def wm_shared_packages(self) -> list[str]:
         """Packages for window managers (Niri)"""
         return [
-            "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk",
+            "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk", "xdg-utils",
             "pipewire", "pipewire-alsa", "pipewire-pulse", "pipewire-zeroconf", "wireplumber", "gvfs", "ffmpeg", "accountsservice",
             "polkit", "polkit-gnome", "swaync", "swayosd", "noto-fonts", "ttf-dejavu", "noto-fonts-emoji", "inter-font", "otf-font-awesome",
             "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel", "ghostty", "foot", "wayvnc", "jq", "brightnessctl", "duf",
             "pavucontrol", "pamixer", "pulsemixer", "awww", "swappy", "satty", "kimageformats", "wf-recorder", "mpv", "mpd", "playerctl", "cava",
-            "cliphist", "udiskie", "cups-pk-helper", "network-manager-applet", "khal", "python-pywal", "pastel", "matugen",
-            "wlr-randr", "wtype", "wlsunset", "dialog", "ddcutil", "i2c-tools", "power-profiles-daemon", "dgop"
+            "cliphist", "udiskie", "cups-pk-helper", "network-manager-applet", "khal", "python-pywal", "pastel", "matugen", "imagemagick",
+            "wlr-randr", "wtype", "wlsunset", "dialog", "ddcutil", "i2c-tools", "power-profiles-daemon", "tesseract",  "tesseract-data-eng", "dgop"
         ]
 
     async def wm_write_user_file(self, username: str, rel_path: str, content: str, overwrite: bool = True) -> bool:
@@ -2118,7 +2119,7 @@ Environment=LIBSEAT_BACKEND=logind
 
         console.write("sl-greeter and sl-lock installed and configured successfully!")
         return True
-        
+
     async def wm_install_sl_desktop_utils(self) -> bool:
         """
         Installs sl-desktop-utils (sl-greeter, sl-lock and the sl-lock services) from Sl's Arch Repository (slsrepo).
@@ -2221,7 +2222,7 @@ Environment=LIBSEAT_BACKEND=logind
             return False
 
         # Install base packages (Niri + shared WM packages)
-        base_packages = self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring", "fprintd", "qt6-multimedia", "adw-gtk-theme", "qt6ct-kde"]
+        base_packages = self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring", "fprintd", "pam-u2f", "qt6-multimedia", "adw-gtk-theme", "qt6ct-kde"]
         packages_str = " ".join(base_packages)
 
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages_str}", timeout=1800):
@@ -2377,6 +2378,7 @@ Environment=LIBSEAT_BACKEND=logind
                 console.write("[ERROR] Failed to disable the recurring network manager notifications.")
                 return
         console.write("Recurring network notifications fix successfully applied!")
+        self.maybe_redirect_completion_from_extras()
 
     async def enable_hybrid_graphics(self):
         """Enable iGPU by default via apple-gmux force_igd."""
@@ -2391,6 +2393,7 @@ Environment=LIBSEAT_BACKEND=logind
                 console.write("[ERROR] Failed to enable Hybrid Graphics (iGPU).")
                 return
         console.write("Hybrid Graphics (iGPU) enabled in /etc/modprobe.d/apple-gmux.conf!")
+        self.maybe_redirect_completion_from_extras()
 
     async def disable_suspend_sleep(self):
         """Set Suspend and Sleep options to no to disable them completely in sleep.conf."""
@@ -2400,6 +2403,7 @@ Environment=LIBSEAT_BACKEND=logind
             console.write("[ERROR] Failed to disable suspend in sleep.conf")
             return
         console.write("Suspend and Sleep have been successfully disabled in /etc/systemd/sleep.conf!")
+        self.maybe_redirect_completion_from_extras()
 
     async def ignore_lid_switch(self):
         """Set HandleLidSwitch options to ignore to prevent Suspend."""
@@ -2414,6 +2418,7 @@ Environment=LIBSEAT_BACKEND=logind
                 console.write("[ERROR] Failed to update lid switch settings")
                 return
         console.write("Lid switch handling set to ignore in /etc/systemd/logind.conf!")
+        self.maybe_redirect_completion_from_extras()
 
     async def install_suspend_fix(self):
         """Install the Suspend workaround service."""
@@ -2427,7 +2432,7 @@ Environment=LIBSEAT_BACKEND=logind
         rmmod_path = get_path("rmmod")
         console.write(f"Using modprobe at {modprobe_path} and rmmod at {rmmod_path}")
         service_content = f"""[Unit]
-Description=Disable and Re-Enable Apple BCE Module (and Wi-Fi)
+Description=Disable and re-enable services to try and fix suspend
 Before=sleep.target
 StopWhenUnneeded=yes
 
@@ -2455,6 +2460,7 @@ WantedBy=sleep.target
         if await self.run_in_chroot(command):
             if await self.run_in_chroot("systemctl enable suspend-fix-t2.service"):
                 console.write("Suspend fix installed and enabled!")
+                self.maybe_redirect_completion_from_extras()
             else:
                 console.write("[ERROR] Failed to enable suspend fix service")
         else:
