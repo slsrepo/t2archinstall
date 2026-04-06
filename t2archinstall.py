@@ -1950,10 +1950,10 @@ class T2ArchInstaller(App):
                     f"useradd -m -G wheel,storage,power -s /bin/bash {self.username}",
                     f"echo '{self.username}:{user_password}' | chpasswd",
                     "echo -e '[device]\\nwifi.backend=iwd' >> /etc/NetworkManager/NetworkManager.conf",
+					"systemctl enable NetworkManager.service",
                     "systemctl enable iwd.service",
                     "systemctl enable bluetooth.service",
                     "systemctl enable systemd-resolved.service",
-                    "systemctl enable NetworkManager.service",
                     "systemctl enable t2fanrd.service"
                     ]
         for cmd in commands:
@@ -2231,7 +2231,7 @@ Environment=LIBSEAT_BACKEND=logind
 
         # Install DMS, QuickShell, and dependencies from Sl's Arch Repository
         console.write("Installing DMS, QuickShell, and dependencies from Sl's Arch Repository...")
-        dms_packages = "quickshell-git dms-shell-bin matugen greetd dsearch-git greetd-dms-greeter-git"
+        dms_packages = "quickshell-git dms-shell-niri dms-shell matugen greetd dsearch-git greetd-dms-greeter-git"
 
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {dms_packages}", timeout=600):
             console.write("[ERROR] Failed to install DMS packages")
@@ -2308,18 +2308,25 @@ Environment=LIBSEAT_BACKEND=logind
                           ]
         if de_type == "cosmic":
             de_commands = [
-                            "pacman -S --noconfirm --needed cosmic",
+                            "pacman -S --noconfirm --needed cosmic greetd",
+                            "systemctl enable greetd.service",
                             "systemctl enable cosmic-greeter.service"
                           ]
         if de_type == "niri":
             ok = await self.install_niri()
             if ok:
+                de_commands = [
+                                "systemctl enable greetd.service"
+                              ]
                 self.query_one("#left_panel").focus()
                 self.query_one(TabbedContent).active = "extras_tab"
             return
         if de_type == "niridms":
             ok = await self.install_niri_with_dms()
             if ok:
+                de_commands = [
+                                "systemctl enable greetd.service"
+                              ]
                 self.query_one("#left_panel").focus()
                 self.query_one(TabbedContent).active = "extras_tab"
             return
