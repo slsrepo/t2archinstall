@@ -2460,9 +2460,9 @@ ExecStop={modprobe_path} brcmfmac_wcc
 WantedBy=sleep.target
 """
         command = (
-            "'cat <<\"EOF\" > /etc/systemd/system/suspend-fix-t2.service\n"
+            "cat <<\"EOF\" > /etc/systemd/system/suspend-fix-t2.service\n"
             f"{service_content}"
-            "EOF\n'"
+            "EOF\n"
         )
         if await self.run_in_chroot(command):
             if await self.run_in_chroot("systemctl enable suspend-fix-t2.service"):
