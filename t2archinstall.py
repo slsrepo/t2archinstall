@@ -1683,7 +1683,7 @@ class T2ArchInstaller(App):
     async def install_grub(self):
         """Install and configure GRUB as the bootloader."""
         console = self.query_one("#console", RichLog)
-        grub_params = "quiet splash intel_iommu=on iommu=pt pcie_ports=compat"
+        grub_params = "quiet splash intel_iommu=on iommu=pt pcie_ports=auto pm_async=off acpi_osi=!Darwin acpi_osi=Linux"
         if not await self.run_in_chroot(f"sed -i 's|GRUB_CMDLINE_LINUX=\".*\"|GRUB_CMDLINE_LINUX=\"{grub_params}\"|' /etc/default/grub"):
             console.write("[ERROR] GRUB installation failed")
             return
@@ -1729,7 +1729,7 @@ class T2ArchInstaller(App):
             console.write("[ERROR] systemd-boot installation failed")
             return
 
-        kernel_params = "rw quiet splash intel_iommu=on iommu=pt pcie_ports=compat"
+        kernel_params = "rw quiet splash intel_iommu=on iommu=pt pcie_ports=auto pm_async=off acpi_osi=!Darwin acpi_osi=Linux"
         if await self.target_root_uses_btrfs():
             kernel_params += " rootflags=subvol=@"
         root_part = "root=/dev/vg0/root" if self.use_lvm else f"root={self.root_partition}"
@@ -1759,7 +1759,7 @@ class T2ArchInstaller(App):
             console.write("[ERROR] Limine installation failed")
             return
 
-        kernel_params = "rw quiet splash intel_iommu=on iommu=pt pcie_ports=compat"
+        kernel_params = "rw quiet splash intel_iommu=on iommu=pt pcie_ports=auto pm_async=off acpi_osi=!Darwin acpi_osi=Linux"
         if await self.target_root_uses_btrfs():
             kernel_params += " rootflags=subvol=@"
         root_part = "root=/dev/vg0/root" if self.use_lvm else f"root={self.root_partition}"
