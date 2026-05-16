@@ -259,7 +259,8 @@ class T2ArchInstaller(App):
                             yield Static("T2 Suspend solutions:")
                             yield Button("Disable Suspend and Sleep", id="suspend_sleep_btn")
                             yield Button("Ignore Suspend when closing the lid", id="ignore_lid_btn")
-                            yield Button("Enable Suspend Workaround Service", id="suspend_fix_btn")
+                            yield Button("Enable T2 Suspend Workaround Service", id="suspend_fix_btn")
+                            yield Button("Enable Extended T2 Suspend Workaround Service", id="extended_suspend_fix_btn")							
 
                     with TabPane("Completion", id="completion_tab"):
                         with VerticalScroll(id="completion_scroll", can_focus=False):
@@ -807,6 +808,7 @@ class T2ArchInstaller(App):
         elif button_id == "suspend_sleep_btn": await self.disable_suspend_sleep()
         elif button_id == "ignore_lid_btn": await self.ignore_lid_switch()
         elif button_id == "suspend_fix_btn": await self.install_suspend_fix()
+        elif button_id == "extended_suspend_fix_btn": await self.install_extended_suspend_fix()
         elif button_id == "unmount_btn": await self.unmount_system()
         elif button_id == "reboot_btn": await self.reboot_system()
         elif button_id == "shutdown_btn": await self.shutdown_system()
@@ -2472,6 +2474,79 @@ WantedBy=sleep.target
                 console.write("[ERROR] Failed to enable suspend fix service")
         else:
             console.write("[ERROR] Failed to install suspend fix service")
+
+    async def install_extended_suspend_fix(self):
+        """Install the extended template Suspend workaround service, based on deqrocks's Suspend script."""
+        console = self.query_one("#console", RichLog)
+        def get_path(binary: str) -> str:
+            result = subprocess.run(f"which {binary}", shell=True, capture_output=True, text=True)
+            if result.returncode == 0:
+                return result.stdout.strip() or f"/usr/bin/{binary}"
+            return f"/usr/bin/{binary}"
+        modprobe_path = get_path("modprobe")
+        rmmod_path = get_path("rmmod")
+        console.write(f"Using modprobe at {modprobe_path} and rmmod at {rmmod_path}")
+        service_content = f"""[Unit]
+Description=Unload and Reload Modules for Suspend and Resume
+Before=sleep.target
+StopWhenUnneeded=yes
+
+[Service]
+User=root
+Type=oneshot
+RemainAfterExit=yes
+
+# ExecStart=-/usr/bin/bash -lc 'uid=$$(loginctl list-sessions --no-legend 2>/dev/null | awk "{{print \\$$2}}" | head -n1); [ -n "$$uid" ] || exit 0; [ -S "/run/user/$$uid/bus" ] || exit 0; username=$$(id -nu "$$uid" 2>/dev/null) || exit 0; XDG_RUNTIME_DIR="/run/user/$$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$$uid/bus" runuser -u "$$username" -- systemctl --user stop pipewire.socket pipewire-pulse.socket pipewire.service pipewire-pulse.service wireplumber.service 2>/dev/null || true'
+# ExecStart=-{rmmod_path} -f apple_gmux
+# ExecStart=-/usr/bin/sh -c 'echo 1 > /sys/bus/pci/devices/0000:01:00.0/remove'
+# ExecStart=-/usr/bin/sh -c "/usr/bin/echo 0 | /usr/bin/tee /sys/class/leds/apple::kbd_backlight/brightness"
+ExecStart=-/bin/bash -c "/bin/echo 0 | tee /sys/class/leds/:white:kbd_backlight/brightness"
+# ExecStart=-{rmmod_path} hci_bcm4377
+# ExecStart=-{rmmod_path} brcmfmac_wcc
+# ExecStart=-{rmmod_path} brcmfmac
+# ExecStart=-{rmmod_path} brcmutil
+# ExecStart=-/usr/bin/systemctl stop tiny-dfr.service
+# ExecStart=-/usr/bin/pkill -9 tiny-dfr
+ExecStart=-{rmmod_path} appletbdrm
+ExecStart=-{rmmod_path} hid_appletb_kbd
+ExecStart=-{rmmod_path} hid_appletb_bl
+ExecStart=-{rmmod_path} -f apple-bce
+
+ExecStop={modprobe_path} apple-bce
+ExecStop=/usr/bin/sleep 4
+# ExecStop=-/usr/bin/sh -c 'echo 1 > /sys/bus/pci/rescan'
+# ExecStop=-{modprobe_path} apple_gmux
+# ExecStop=-{modprobe_path} brcmutil
+# ExecStop=-{modprobe_path} brcmfmac
+# ExecStop=-{modprobe_path} brcmfmac_wcc
+# ExecStop=-{modprobe_path} hci_bcm4377
+ExecStop=-{modprobe_path} hid_appletb_bl
+ExecStop=-{modprobe_path} hid_appletb_kbd
+ExecStop=-{modprobe_path} appletbdrm
+ExecStop=/usr/bin/sleep 2
+# ExecStopPost=-/usr/bin/systemctl reset-failed tiny-dfr.service
+# ExecStopPost=-/usr/bin/systemctl restart tiny-dfr.service
+# ExecStopPost=-/usr/bin/sh -c "/usr/bin/echo 255 | /usr/bin/tee /sys/class/leds/apple::kbd_backlight/brightness"
+ExecStopPost=-/bin/bash -c "/bin/echo 255 | tee /sys/class/leds/:white:kbd_backlight/brightness"
+# ExecStopPost=-/usr/bin/bash -lc 'uid=$$(loginctl list-sessions --no-legend 2>/dev/null | awk "{{print \\$$2}}" | head -n1); [ -n "$$uid" ] || exit 0; [ -S "/run/user/$$uid/bus" ] || exit 0; username=$$(id -nu "$$uid" 2>/dev/null) || exit 0; XDG_RUNTIME_DIR="/run/user/$$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$$uid/bus" runuser -u "$$username" -- systemctl --user start pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null || true'
+ExecStopPost=-/usr/bin/systemctl restart upower
+
+[Install]
+WantedBy=sleep.target
+"""
+        command = (
+            "cat <<\"EOF\" > /etc/systemd/system/t2-suspend.service\n"
+            f"{service_content}"
+            "EOF\n"
+        )
+        if await self.run_in_chroot(command):
+            if await self.run_in_chroot("systemctl enable t2-suspend.service"):
+                console.write("Suspend fix installed and enabled!")
+                self.maybe_redirect_completion_from_extras()
+            else:
+                console.write("[ERROR] Failed to enable extended suspend fix service")
+        else:
+            console.write("[ERROR] Failed to install extended suspend fix service")
 
     async def unmount_system(self):
         """Unmount filesystems without rebooting."""
