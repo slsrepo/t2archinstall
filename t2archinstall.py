@@ -2014,7 +2014,7 @@ class T2ArchInstaller(App):
             "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel", "ghostty", "foot", "wayvnc", "jq", "brightnessctl", "duf",
             "pavucontrol", "pamixer", "pulsemixer", "awww", "swappy", "satty", "kimageformats", "wf-recorder", "mpv", "mpd", "playerctl", "cava",
             "cliphist", "udiskie", "cups-pk-helper", "network-manager-applet", "khal", "python-pywal", "pastel", "matugen", "imagemagick",
-            "wlr-randr", "wtype", "wlsunset", "dialog", "ddcutil", "i2c-tools", "power-profiles-daemon", "tesseract",  "tesseract-data-eng", "dgop"
+            "wlr-randr", "wtype", "wlsunset", "dialog", "ddcutil", "i2c-tools", "tuned-ppd", "tesseract",  "tesseract-data-eng", "dgop"
         ]
 
     async def wm_write_user_file(self, username: str, rel_path: str, content: str, overwrite: bool = True) -> bool:
