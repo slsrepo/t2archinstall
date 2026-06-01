@@ -2014,7 +2014,7 @@ class T2ArchInstaller(App):
             "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel", "ghostty", "foot", "wayvnc", "jq", "brightnessctl", "duf",
             "pavucontrol", "pamixer", "pulsemixer", "awww", "swappy", "satty", "kimageformats", "wf-recorder", "mpv", "mpd", "playerctl", "cava",
             "cliphist", "udiskie", "cups-pk-helper", "network-manager-applet", "khal", "python-pywal", "pastel", "matugen", "imagemagick",
-            "wlr-randr", "wtype", "wlsunset", "dialog", "ddcutil", "i2c-tools", "tuned-ppd", "tesseract",  "tesseract-data-eng", "dgop"
+            "wlr-randr", "wtype", "wlsunset", "dialog", "ddcutil", "i2c-tools", "tuned-ppd", "dgop"
         ]
 
     async def wm_write_user_file(self, username: str, rel_path: str, content: str, overwrite: bool = True) -> bool:
@@ -2095,51 +2095,7 @@ Environment=LIBSEAT_BACKEND=logind
             return False
 
         # Install the sl-desktop-utils package and its dependencies
-        if not await self.run_in_chroot("pacman -S --noconfirm --needed quickshell-git qt6-multimedia niri sl-desktop-utils unzip wayidle-git"):
-            console.write("[ERROR] Failed to install sl-desktop-utils")
-            return False
-
-        # Set up the user's local bin symlink for the wallpaper
-        username = self.username
-        setup_wallpaper_cmd = (
-            f"mkdir -p /home/{username}/.config/quickshell && "
-            f"cp -r /usr/share/quickshell/sl-lock /home/{username}/.config/quickshell && "
-            f"mkdir -p /home/{username}/.local/bin && "
-            f"ln -sf /usr/local/share/backgrounds/sl-greeter-current-background /home/{username}/.local/bin/current-background && "
-            f"chown -R {username}:{username} /home/{username}/.local"
-        )
-        if not await self.run_in_chroot(setup_wallpaper_cmd):
-            console.write("[WARN] Could not setup user wallpaper symlink")
-
-        # Disable getty on tty2 and enable greetd
-        if not await self.run_in_chroot(
-            "systemctl disable --now getty@tty2.service 2>/dev/null || true && "
-            "systemctl enable greetd.service"
-        ):
-            console.write("[ERROR] Failed to enable greetd.service")
-            return False
-
-        console.write("sl-greeter and sl-lock installed and configured successfully!")
-        return True
-
-    async def wm_install_sl_desktop_utils(self) -> bool:
-        """
-        Installs sl-desktop-utils (sl-greeter, sl-lock and the sl-lock services) from Sl's Arch Repository (slsrepo).
-        """
-        console = self.query_one("#console", RichLog)
-        console.write("Setting up sl-greeter and sl-lock by installing sl-desktop-utils...")
-
-        if not self.username:
-            console.write("[ERROR] Username not set; create user first.")
-            return False
-
-        # Add Sl’s Arch Repository to chroot
-        if not await self.add_slsrepo_to_chroot():
-            console.write("[ERROR] Failed to add Sl's Arch Repository")
-            return False
-
-        # Install the sl-desktop-utils package and its dependencies
-        if not await self.run_in_chroot("pacman -S --noconfirm --needed quickshell-git niri sl-desktop-utils unzip wayidle-git"):
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed quickshell qt6-multimedia niri sl-desktop-utils unzip wayidle-git"):
             console.write("[ERROR] Failed to install sl-desktop-utils")
             return False
 
@@ -2199,7 +2155,8 @@ Environment=LIBSEAT_BACKEND=logind
             f"curl -fsSL '{niri_config_url}' -o {niri_config_dir}/config.kdl && "
             f"sed -i 's/alacritty/ghostty/g' {niri_config_dir}/config.kdl && "
             f"sed -i 's/Screen: swaylock/Screen: sl-lock/g' {niri_config_dir}/config.kdl && "
-            f"sed -i 's/spawn \"swaylock\"/spawn-sh \"qs -c sl-lock\"/g' {niri_config_dir}/config.kdl && "
+            f"sed -i 's/spawn \\\"swaylock\\\"/spawn \\\"sl-lock\\\"/g' {niri_config_dir}/config.kdl && "
+            f"(grep -q 'lid-closed' {niri_config_dir}/config.kdl || echo -e '\\nswitch-events {{\\n    lid-closed {{ spawn \"sl-lock\"; }}\\n}}' >> {niri_config_dir}/config.kdl) && "
             f"sed -i 's|// spawn-at-startup \"swayidle\".*|// Show Lock screen after 5 minutes\\n    spawn-at-startup \"sl-idle-lock\" \"300\"\\n\\n    // Turn off monitors after 6 minutes\\n    spawn-at-startup \"sh\" \"-c\" \"while true; do wayidle -t 360 niri msg action power-off-monitors; done\"|g' {niri_config_dir}/config.kdl && "
             f"(grep -q 'spawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"' {niri_config_dir}/config.kdl || echo 'spawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"' >> {niri_config_dir}/config.kdl) && "
             f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
@@ -2299,7 +2256,7 @@ Environment=LIBSEAT_BACKEND=logind
 
         if de_type == "gnome":
             de_commands = [
-                            "pacman -S --noconfirm --needed gnome gnome-extra gnome-tweaks gnome-power-manager power-profiles-daemon gdm",
+                            "pacman -S --noconfirm --needed gnome gnome-extra gnome-tweaks gnome-power-manager tuned tuned-ppd gdm",
                             "systemctl enable gdm.service",
                             "systemctl enable power-profiles-daemon.service"
                           ]
@@ -2345,7 +2302,7 @@ Environment=LIBSEAT_BACKEND=logind
         """Install additional packages."""
         console = self.query_one("#console", RichLog)
         commands = [
-                    "pacman -S --noconfirm --needed ffmpeg pipewire pipewire-zeroconf ghostty fastfetch chafa",
+                    "pacman -S --noconfirm --needed ffmpeg pipewire pipewire-zeroconf ghostty fastfetch chafa tesseract tesseract-data-eng",
                     ]
         if await self.target_root_uses_btrfs():
             commands.append("pacman -S --noconfirm --needed snap-pac")
@@ -2505,7 +2462,7 @@ ExecStart=-/bin/bash -c "/bin/echo 0 | tee /sys/class/leds/:white:kbd_backlight/
 # ExecStart=-{rmmod_path} brcmfmac_wcc
 # ExecStart=-{rmmod_path} brcmfmac
 # ExecStart=-{rmmod_path} brcmutil
-# ExecStart=-/usr/bin/systemctl stop tiny-dfr.service
+ExecStart=-/usr/bin/systemctl stop tiny-dfr.service
 # ExecStart=-/usr/bin/pkill -9 tiny-dfr
 ExecStart=-{rmmod_path} appletbdrm
 ExecStart=-{rmmod_path} hid_appletb_kbd
@@ -2523,11 +2480,14 @@ ExecStop=/usr/bin/sleep 4
 ExecStop=-{modprobe_path} hid_appletb_bl
 ExecStop=-{modprobe_path} hid_appletb_kbd
 ExecStop=-{modprobe_path} appletbdrm
-ExecStop=/usr/bin/sleep 2
+ExecStop=-/usr/bin/sh -c 'echo 0 > /sys/bus/usb/devices/3-6/bConfigurationValue'
+ExecStop=/usr/bin/sleep 1
+ExecStop=-/usr/bin/sh -c 'echo 2 > /sys/bus/usb/devices/3-6/bConfigurationValue'
+ExecStop=-/usr/bin/udevadm settle
+ExecStop=-/usr/bin/systemctl restart tiny-dfr.service
 # ExecStopPost=-/usr/bin/systemctl reset-failed tiny-dfr.service
-# ExecStopPost=-/usr/bin/systemctl restart tiny-dfr.service
 # ExecStopPost=-/usr/bin/sh -c "/usr/bin/echo 255 | /usr/bin/tee /sys/class/leds/apple::kbd_backlight/brightness"
-ExecStopPost=-/bin/bash -c "/bin/echo 255 | tee /sys/class/leds/:white:kbd_backlight/brightness"
+ExecStopPost=-/bin/bash -c "/bin/echo 200 | tee /sys/class/leds/:white:kbd_backlight/brightness"
 # ExecStopPost=-/usr/bin/bash -lc 'uid=$$(loginctl list-sessions --no-legend 2>/dev/null | awk "{{print \\$$2}}" | head -n1); [ -n "$$uid" ] || exit 0; [ -S "/run/user/$$uid/bus" ] || exit 0; username=$$(id -nu "$$uid" 2>/dev/null) || exit 0; XDG_RUNTIME_DIR="/run/user/$$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$$uid/bus" runuser -u "$$username" -- systemctl --user start pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null || true'
 ExecStopPost=-/usr/bin/systemctl restart upower
 
