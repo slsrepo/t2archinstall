@@ -1685,7 +1685,7 @@ class T2ArchInstaller(App):
     async def install_grub(self):
         """Install and configure GRUB as the bootloader."""
         console = self.query_one("#console", RichLog)
-        grub_params = "quiet splash intel_iommu=on iommu=pt pcie_ports=auto pm_async=off acpi_osi=!Darwin acpi_osi=Linux"
+        grub_params = "quiet splash intel_iommu=on iommu=pt pcie_ports=native pm_async=off mem_sleep_default=deep"
         if not await self.run_in_chroot(f"sed -i 's|GRUB_CMDLINE_LINUX=\".*\"|GRUB_CMDLINE_LINUX=\"{grub_params}\"|' /etc/default/grub"):
             console.write("[ERROR] GRUB installation failed")
             return
@@ -1731,7 +1731,7 @@ class T2ArchInstaller(App):
             console.write("[ERROR] systemd-boot installation failed")
             return
 
-        kernel_params = "rw quiet splash intel_iommu=on iommu=pt pcie_ports=auto pm_async=off acpi_osi=!Darwin acpi_osi=Linux"
+        kernel_params = "rw quiet splash intel_iommu=on iommu=pt pcie_ports=native pm_async=off mem_sleep_default=deep"
         if await self.target_root_uses_btrfs():
             kernel_params += " rootflags=subvol=@"
         root_part = "root=/dev/vg0/root" if self.use_lvm else f"root={self.root_partition}"
@@ -1761,7 +1761,7 @@ class T2ArchInstaller(App):
             console.write("[ERROR] Limine installation failed")
             return
 
-        kernel_params = "rw quiet splash intel_iommu=on iommu=pt pcie_ports=auto pm_async=off acpi_osi=!Darwin acpi_osi=Linux"
+        kernel_params = "rw quiet splash intel_iommu=on iommu=pt pcie_ports=native pm_async=off mem_sleep_default=deep"
         if await self.target_root_uses_btrfs():
             kernel_params += " rootflags=subvol=@"
         root_part = "root=/dev/vg0/root" if self.use_lvm else f"root={self.root_partition}"
@@ -2156,7 +2156,7 @@ Environment=LIBSEAT_BACKEND=logind
             f"sed -i 's/alacritty/ghostty/g' {niri_config_dir}/config.kdl && "
             f"sed -i 's/Screen: swaylock/Screen: sl-lock/g' {niri_config_dir}/config.kdl && "
             f"sed -i 's/spawn \\\"swaylock\\\"/spawn \\\"sl-lock\\\"/g' {niri_config_dir}/config.kdl && "
-            f"(grep -q 'lid-closed' {niri_config_dir}/config.kdl || echo -e '\\nswitch-events {{\\n    lid-closed {{ spawn \"sl-lock\"; }}\\n}}' >> {niri_config_dir}/config.kdl) && "
+            f"(grep -q 'lid-close' {niri_config_dir}/config.kdl || echo -e '\\nswitch-events {{\\n    lid-close {{ spawn \"sl-lock\"; }}\\n}}' >> {niri_config_dir}/config.kdl) && "
             f"sed -i 's|// spawn-at-startup \"swayidle\".*|// Show Lock screen after 5 minutes\\n    spawn-at-startup \"sl-idle-lock\" \"300\"\\n\\n    // Turn off monitors after 6 minutes\\n    spawn-at-startup \"sh\" \"-c\" \"while true; do wayidle -t 360 niri msg action power-off-monitors; done\"|g' {niri_config_dir}/config.kdl && "
             f"(grep -q 'spawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"' {niri_config_dir}/config.kdl || echo 'spawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"' >> {niri_config_dir}/config.kdl) && "
             f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
@@ -2190,7 +2190,7 @@ Environment=LIBSEAT_BACKEND=logind
 
         # Install DMS, QuickShell, and dependencies from Sl's Arch Repository
         console.write("Installing DMS, QuickShell, and dependencies from Sl's Arch Repository...")
-        dms_packages = "quickshell-git dms-shell-niri dms-shell matugen greetd dsearch-git greetd-dms-greeter-git"
+        dms_packages = "quickshell dms-shell-niri dms-shell matugen greetd dsearch-git greetd-dms-greeter-bin dankcalendar-bin"
 
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {dms_packages}", timeout=600):
             console.write("[ERROR] Failed to install DMS packages")
@@ -2409,11 +2409,12 @@ RemainAfterExit=yes
 
 ExecStart={modprobe_path} -r brcmfmac_wcc
 ExecStart={modprobe_path} -r brcmfmac
-ExecStart={rmmod_path} -f apple-bce
+ExecStart={modprobe_path} -r hci_bcm4377
 
-ExecStop={modprobe_path} apple-bce
-ExecStop={modprobe_path} brcmfmac
-ExecStop={modprobe_path} brcmfmac_wcc
+ExecStop=-/usr/bin/modprobe brcmfmac
+ExecStop=-/usr/bin/modprobe brcmfmac_wcc
+ExecStop=-/usr/bin/sleep 5
+ExecStop=-/usr/bin/modprobe hci_bcm4377
 
 [Install]
 WantedBy=sleep.target
@@ -2467,9 +2468,7 @@ ExecStart=-/usr/bin/systemctl stop tiny-dfr.service
 ExecStart=-{rmmod_path} appletbdrm
 ExecStart=-{rmmod_path} hid_appletb_kbd
 ExecStart=-{rmmod_path} hid_appletb_bl
-ExecStart=-{rmmod_path} -f apple-bce
 
-ExecStop={modprobe_path} apple-bce
 ExecStop=/usr/bin/sleep 4
 # ExecStop=-/usr/bin/sh -c 'echo 1 > /sys/bus/pci/rescan'
 # ExecStop=-{modprobe_path} apple_gmux
