@@ -198,7 +198,7 @@ class T2ArchInstaller(App):
                             yield Button("Auto Install (in the app)", id="pacstrap_auto_btn")
                             yield Button("Manual Install (will exit the app)", id="pacstrap_manual_btn")
                             yield Static("Manual command:")
-                            yield Static("pacstrap -K /mnt base linux-t2 linux-t2-headers apple-t2-audio-config apple-bcm-firmware linux-firmware iwd networkmanager t2fanrd grub efibootmgr nano sudo git base-devel lvm2 btrfs-progs", id="pacstrap_cmd")
+                            yield Static("pacstrap -K /mnt base linux-t2 linux-t2-headers apple-t2-audio-config apple-bcm-firmware linux-firmware networkmanager t2fanrd grub efibootmgr nano sudo git base-devel lvm2 btrfs-progs", id="pacstrap_cmd")
 
                     with TabPane("System", id="system_tab"):
                         with VerticalScroll(id="system_scroll", can_focus=False):
@@ -252,10 +252,13 @@ class T2ArchInstaller(App):
                             yield Static("Install additional (optional) packages and tweaks")
                             yield Static("These include ffmpeg, pipewire, ghostty and fastfetch.")
                             yield Button("Install Extra packages", id="extras_btn")
-                            yield Button("Install tiny-dfr (for better TouchBar support)", id="tiny_dfr_btn")
                             yield Button("Add Sl's Arch Repository to Pacman", id="add_slsrepo_btn")
+							yield Button("Use iwd for Wi-Fi backend (Optional)", id="iwd_backend_btn")
+							yield Static("")
+							yield Button("Install tiny-dfr (for better TouchBar support)", id="tiny_dfr_btn")
                             yield Button("Enable Hybrid Graphics (iGPU)", id="enable_hybrid_graphics_btn")
                             yield Button("T2 TouchBar recurring network notifications fix", id="recurring_network_notifications_fix_btn")
+							yield Button("Install T2 Audio DSP", id="audio_dsp_btn")
                             yield Static("T2 Suspend solutions:")
                             yield Button("Disable Suspend and Sleep", id="suspend_sleep_btn")
                             yield Button("Ignore Suspend when closing the lid", id="ignore_lid_btn")
@@ -801,10 +804,14 @@ class T2ArchInstaller(App):
                 self.maybe_redirect_completion_from_extras()
             else:
                 self.query_one("#add_slsrepo_btn").focus()
+		elif button_id == "iwd_backend_btn":
+		    await self.enable_iwd_backend()
         elif button_id == "enable_hybrid_graphics_btn":
             await self.enable_hybrid_graphics()
         elif button_id == "recurring_network_notifications_fix_btn":
             await self.recurring_network_notifications_fix()
+		elif button_id == "audio_dsp_btn":
+		    await self.install_audio_dsp()
         elif button_id == "suspend_sleep_btn": await self.disable_suspend_sleep()
         elif button_id == "ignore_lid_btn": await self.ignore_lid_switch()
         elif button_id == "suspend_fix_btn": await self.install_suspend_fix()
@@ -1505,7 +1512,7 @@ class T2ArchInstaller(App):
         if self.post_install_mode:
             console.write("[WARN] pacstrap is install-only and will be skipped in post-install mode.")
             return
-        packages = "base linux-t2 linux-t2-headers apple-t2-audio-config apple-bcm-firmware linux-firmware iwd networkmanager bluez bluez-utils bluez-tools t2fanrd grub efibootmgr nano sudo git base-devel lvm2 btrfs-progs"
+        packages = "base linux-t2 linux-t2-headers apple-t2-audio-config apple-bcm-firmware linux-firmware networkmanager bluez bluez-utils bluez-tools t2fanrd grub efibootmgr nano sudo git base-devel lvm2 btrfs-progs"
         cmd = f"pacstrap -K /mnt {packages}"
         console.write("Installing base system... This might take a while (10+ minutes)...")
         if await self.run_command(cmd, timeout=1800):
@@ -1675,6 +1682,8 @@ class T2ArchInstaller(App):
         if self.use_lvm:
             await self.run_in_chroot("sed -i 's|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block filesystems fsck)|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block lvm2 filesystems fsck)|' /etc/mkinitcpio.conf")
         console.write("Building initramfs (This might take a while)...")
+		await self.run_in_chroot("mkdir -p /boot/efi/EFI/Linux")
+		await self.run_in_chroot(r"""sed -i 's|^#default_uki="/efi/|default_uki="/boot/efi/|' /etc/mkinitcpio.d/linux-t2.preset""")
         if await self.run_in_chroot("mkinitcpio -P", timeout=600):
             console.write("Initramfs built successfully!")
             self.query_one("#left_panel").focus()
@@ -1803,6 +1812,13 @@ class T2ArchInstaller(App):
                 "    module_path: boot():/initramfs-linux-t2-fallback.img",
                 f"    cmdline: {root_part} {kernel_params}",
             ])
+		# Add UKI entry after Fallback, if it exists
+		limine_conf_lines.extend([
+		    "",
+		    "/Arch Linux T2 (UKI)",
+		    "    protocol: efi_chainload",
+		    "    path: boot():/EFI/Linux/arch-linux-t2.efi",
+		])	
         try:
             limine_conf_dir = os.path.dirname(limine_conf_path)
             os.makedirs(limine_conf_dir, exist_ok=True)
@@ -1951,9 +1967,7 @@ class T2ArchInstaller(App):
         commands = [
                     f"useradd -m -G wheel,storage,power -s /bin/bash {self.username}",
                     f"echo '{self.username}:{user_password}' | chpasswd",
-                    "echo -e '[device]\\nwifi.backend=iwd' >> /etc/NetworkManager/NetworkManager.conf",
 					"systemctl enable NetworkManager.service",
-                    "systemctl enable iwd.service",
                     "systemctl enable bluetooth.service",
                     "systemctl enable systemd-resolved.service",
                     "systemctl enable t2fanrd.service"
@@ -2010,11 +2024,11 @@ class T2ArchInstaller(App):
         return [
             "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk", "xdg-utils",
             "pipewire", "pipewire-alsa", "pipewire-pulse", "pipewire-zeroconf", "wireplumber", "gvfs", "ffmpeg", "accountsservice",
-            "polkit", "polkit-gnome", "swaync", "swayosd", "noto-fonts", "ttf-dejavu", "noto-fonts-emoji", "inter-font", "otf-font-awesome",
-            "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "mako", "fuzzel", "ghostty", "foot", "wayvnc", "jq", "brightnessctl", "duf",
+            "polkit", "polkit-gnome", "swaync", "swayosd", "noto-fonts", "noto-fonts-emoji", "ttf-dejavu", "ttf-ibm-plex", "inter-font", "otf-font-awesome",
+            "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "fnott", "fuzzel", "fyi", "foot", "ghostty", "wayvnc", "jq", "brightnessctl", "duf",
             "pavucontrol", "pamixer", "pulsemixer", "awww", "swappy", "satty", "kimageformats", "wf-recorder", "mpv", "mpd", "playerctl", "cava",
             "cliphist", "udiskie", "cups-pk-helper", "network-manager-applet", "khal", "python-pywal", "pastel", "matugen", "imagemagick",
-            "wlr-randr", "wtype", "wlsunset", "dialog", "ddcutil", "i2c-tools", "tuned-ppd", "dgop"
+            "wlr-randr", "wtype", "wdisplays", "wlsunset", "dialog", "ddcutil", "i2c-tools", "tuned-ppd", "dgop"
         ]
 
     async def wm_write_user_file(self, username: str, rel_path: str, content: str, overwrite: bool = True) -> bool:
@@ -2256,7 +2270,7 @@ Environment=LIBSEAT_BACKEND=logind
 
         if de_type == "gnome":
             de_commands = [
-                            "pacman -S --noconfirm --needed gnome gnome-extra gnome-tweaks gnome-power-manager tuned tuned-ppd gdm",
+                            "pacman -S --noconfirm --needed gnome gnome-extra gnome-tweaks gnome-power-manager bazaar tuned tuned-ppd gdm",
                             "systemctl enable gdm.service",
                             "systemctl enable power-profiles-daemon.service"
                           ]
@@ -2332,19 +2346,41 @@ Environment=LIBSEAT_BACKEND=logind
         console.write("tiny-dfr config available in /etc/tiny-dfr/config.toml")
         self.maybe_redirect_completion_from_extras()
 
-    async def recurring_network_notifications_fix(self):
-        """Disable recurring notifications caused by the internal usb ethernet interface connected to the T2 chip."""
-        console = self.query_one("#console", RichLog)
-        commands = [
-                    'cat <<EOF | sudo tee /etc/udev/rules.d/99-network-t2-ncm.rules\\nSUBSYSTEM=="net", ACTION=="add", ATTR{address}=="ac:de:48:00:11:22", NAME="t2_ncm"\\nEOF','cat <<EOF | sudo tee /etc/NetworkManager/conf.d/99-network-t2-ncm.conf\\n[main]\\nno-auto-default=t2_ncm\\nEOF'
-                    ]
-        console.write("Recurring network notifications fix running")
-        for cmd in commands:
-            if not await self.run_in_chroot(cmd):
-                console.write("[ERROR] Failed to disable the recurring network manager notifications.")
-                return
-        console.write("Recurring network notifications fix successfully applied!")
-        self.maybe_redirect_completion_from_extras()
+	async def enable_iwd_backend(self):
+		"""Install iwd and switch NetworkManager to the iwd Wi-Fi backend."""
+		console = self.query_one("#console", RichLog)
+		console.write("Installing iwd and enabling the NetworkManager iwd backend...")
+		commands = [
+			"pacman -S --noconfirm --needed iwd",
+			"mkdir -p /etc/NetworkManager/conf.d",
+			"""cat > /etc/NetworkManager/conf.d/20-wifi-backend.conf <<'EOF'
+	[device]
+	wifi.backend=iwd
+	EOF""",
+			"systemctl enable iwd.service",
+		]
+		if self.post_install_mode:
+			commands.append("systemctl restart iwd.service && systemctl restart NetworkManager.service")
+		for cmd in commands:
+			if not await self.run_in_chroot(cmd, timeout=600):
+				console.write("[ERROR] Failed to enable the iwd Wi-Fi backend.")
+				return
+		console.write("NetworkManager is now configured to use iwd.")
+		console.write("wpa_supplicant remains installed.")
+		self.maybe_redirect_completion_from_extras()
+
+	async def recurring_network_notifications_fix(self):
+	    """Install the packaged fix for recurring T2 CDC-NCM notifications."""
+	    console = self.query_one("#console", RichLog)
+	    console.write("Installing the recurring network notifications fix...")
+	    if not await self.add_slsrepo_to_chroot():
+	        console.write("[ERROR] Sl's Arch Repository is required for the network notifications fix.")
+	        return
+	    if not await self.run_in_chroot("pacman -S --noconfirm --needed t2-network-rules", timeout=600):
+	        console.write("[ERROR] Failed to install the recurring network notifications fix.")
+	        return
+	    console.write("Recurring network notifications fix successfully installed!")
+	    self.maybe_redirect_completion_from_extras()
 
     async def enable_hybrid_graphics(self):
         """Enable iGPU by default via apple-gmux force_igd."""
@@ -2360,6 +2396,19 @@ Environment=LIBSEAT_BACKEND=logind
                 return
         console.write("Hybrid Graphics (iGPU) enabled in /etc/modprobe.d/apple-gmux.conf!")
         self.maybe_redirect_completion_from_extras()
+
+	async def install_audio_dsp(self):
+	    """Install the optional T2 audio DSP package."""
+	    console = self.query_one("#console", RichLog)
+	    console.write("Installing T2 Audio DSP...")
+	    if not await self.add_slsrepo_to_chroot():
+	        console.write("[ERROR] Sl's Arch Repository is required for T2 Audio DSP.")
+	        return
+	    if not await self.run_in_chroot("pacman -S --noconfirm --needed t2bce-audio-dsp", timeout=900):
+	        console.write("[ERROR] T2 Audio DSP installation failed.")
+	        return
+	    console.write("T2 Audio DSP installed successfully!")
+	    self.maybe_redirect_completion_from_extras()
 
     async def disable_suspend_sleep(self):
         """Set Suspend and Sleep options to no to disable them completely in sleep.conf."""
