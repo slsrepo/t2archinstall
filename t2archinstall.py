@@ -253,17 +253,17 @@ class T2ArchInstaller(App):
                             yield Static("These include ffmpeg, pipewire, ghostty and fastfetch.")
                             yield Button("Install Extra packages", id="extras_btn")
                             yield Button("Add Sl's Arch Repository to Pacman", id="add_slsrepo_btn")
-							yield Button("Use iwd for Wi-Fi backend (Optional)", id="iwd_backend_btn")
-							yield Static("")
-							yield Button("Install tiny-dfr (for better TouchBar support)", id="tiny_dfr_btn")
+                            yield Button("Use iwd for Wi-Fi backend (Optional)", id="iwd_backend_btn")
+                            yield Static("")
+                            yield Button("Install tiny-dfr (for better TouchBar support)", id="tiny_dfr_btn")
                             yield Button("Enable Hybrid Graphics (iGPU)", id="enable_hybrid_graphics_btn")
                             yield Button("T2 TouchBar recurring network notifications fix", id="recurring_network_notifications_fix_btn")
-							yield Button("Install T2 Audio DSP", id="audio_dsp_btn")
+                            yield Button("Install T2 Audio DSP", id="audio_dsp_btn")
                             yield Static("T2 Suspend solutions:")
                             yield Button("Disable Suspend and Sleep", id="suspend_sleep_btn")
                             yield Button("Ignore Suspend when closing the lid", id="ignore_lid_btn")
                             yield Button("Enable T2 Suspend Workaround Service", id="suspend_fix_btn")
-                            yield Button("Enable Extended T2 Suspend Workaround Service", id="extended_suspend_fix_btn")							
+                            yield Button("Enable Extended T2 Suspend Workaround Service", id="extended_suspend_fix_btn")                            
 
                     with TabPane("Completion", id="completion_tab"):
                         with VerticalScroll(id="completion_scroll", can_focus=False):
@@ -804,14 +804,14 @@ class T2ArchInstaller(App):
                 self.maybe_redirect_completion_from_extras()
             else:
                 self.query_one("#add_slsrepo_btn").focus()
-		elif button_id == "iwd_backend_btn":
-		    await self.enable_iwd_backend()
+        elif button_id == "iwd_backend_btn":
+            await self.enable_iwd_backend()
         elif button_id == "enable_hybrid_graphics_btn":
             await self.enable_hybrid_graphics()
         elif button_id == "recurring_network_notifications_fix_btn":
             await self.recurring_network_notifications_fix()
-		elif button_id == "audio_dsp_btn":
-		    await self.install_audio_dsp()
+        elif button_id == "audio_dsp_btn":
+            await self.install_audio_dsp()
         elif button_id == "suspend_sleep_btn": await self.disable_suspend_sleep()
         elif button_id == "ignore_lid_btn": await self.ignore_lid_switch()
         elif button_id == "suspend_fix_btn": await self.install_suspend_fix()
@@ -1682,8 +1682,8 @@ class T2ArchInstaller(App):
         if self.use_lvm:
             await self.run_in_chroot("sed -i 's|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block filesystems fsck)|HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block lvm2 filesystems fsck)|' /etc/mkinitcpio.conf")
         console.write("Building initramfs (This might take a while)...")
-		await self.run_in_chroot("mkdir -p /boot/efi/EFI/Linux")
-		await self.run_in_chroot(r"""sed -i 's|^#default_uki="/efi/|default_uki="/boot/efi/|' /etc/mkinitcpio.d/linux-t2.preset""")
+        await self.run_in_chroot("mkdir -p /boot/efi/EFI/Linux")
+        await self.run_in_chroot(r"""sed -i 's|^#default_uki="/efi/|default_uki="/boot/efi/|' /etc/mkinitcpio.d/linux-t2.preset""")
         if await self.run_in_chroot("mkinitcpio -P", timeout=600):
             console.write("Initramfs built successfully!")
             self.query_one("#left_panel").focus()
@@ -1812,13 +1812,13 @@ class T2ArchInstaller(App):
                 "    module_path: boot():/initramfs-linux-t2-fallback.img",
                 f"    cmdline: {root_part} {kernel_params}",
             ])
-		# Add UKI entry after Fallback, if it exists
-		limine_conf_lines.extend([
-		    "",
-		    "/Arch Linux T2 (UKI)",
-		    "    protocol: efi_chainload",
-		    "    path: boot():/EFI/Linux/arch-linux-t2.efi",
-		])	
+        # Add UKI entry after Fallback, if it exists
+        limine_conf_lines.extend([
+            "",
+            "/Arch Linux T2 (UKI)",
+            "    protocol: efi_chainload",
+            "    path: boot():/EFI/Linux/arch-linux-t2.efi",
+        ])    
         try:
             limine_conf_dir = os.path.dirname(limine_conf_path)
             os.makedirs(limine_conf_dir, exist_ok=True)
@@ -1967,7 +1967,7 @@ class T2ArchInstaller(App):
         commands = [
                     f"useradd -m -G wheel,storage,power -s /bin/bash {self.username}",
                     f"echo '{self.username}:{user_password}' | chpasswd",
-					"systemctl enable NetworkManager.service",
+                    "systemctl enable NetworkManager.service",
                     "systemctl enable bluetooth.service",
                     "systemctl enable systemd-resolved.service",
                     "systemctl enable t2fanrd.service"
@@ -2346,41 +2346,41 @@ Environment=LIBSEAT_BACKEND=logind
         console.write("tiny-dfr config available in /etc/tiny-dfr/config.toml")
         self.maybe_redirect_completion_from_extras()
 
-	async def enable_iwd_backend(self):
-		"""Install iwd and switch NetworkManager to the iwd Wi-Fi backend."""
-		console = self.query_one("#console", RichLog)
-		console.write("Installing iwd and enabling the NetworkManager iwd backend...")
-		commands = [
-			"pacman -S --noconfirm --needed iwd",
-			"mkdir -p /etc/NetworkManager/conf.d",
-			"""cat > /etc/NetworkManager/conf.d/20-wifi-backend.conf <<'EOF'
-	[device]
-	wifi.backend=iwd
-	EOF""",
-			"systemctl enable iwd.service",
-		]
-		if self.post_install_mode:
-			commands.append("systemctl restart iwd.service && systemctl restart NetworkManager.service")
-		for cmd in commands:
-			if not await self.run_in_chroot(cmd, timeout=600):
-				console.write("[ERROR] Failed to enable the iwd Wi-Fi backend.")
-				return
-		console.write("NetworkManager is now configured to use iwd.")
-		console.write("wpa_supplicant remains installed.")
-		self.maybe_redirect_completion_from_extras()
+    async def enable_iwd_backend(self):
+        """Install iwd and switch NetworkManager to the iwd Wi-Fi backend."""
+        console = self.query_one("#console", RichLog)
+        console.write("Installing iwd and enabling the NetworkManager iwd backend...")
+        commands = [
+            "pacman -S --noconfirm --needed iwd",
+            "mkdir -p /etc/NetworkManager/conf.d",
+            """cat > /etc/NetworkManager/conf.d/20-wifi-backend.conf <<'EOF'
+    [device]
+    wifi.backend=iwd
+    EOF""",
+            "systemctl enable iwd.service",
+        ]
+        if self.post_install_mode:
+            commands.append("systemctl restart iwd.service && systemctl restart NetworkManager.service")
+        for cmd in commands:
+            if not await self.run_in_chroot(cmd, timeout=600):
+                console.write("[ERROR] Failed to enable the iwd Wi-Fi backend.")
+                return
+        console.write("NetworkManager is now configured to use iwd.")
+        console.write("wpa_supplicant remains installed.")
+        self.maybe_redirect_completion_from_extras()
 
-	async def recurring_network_notifications_fix(self):
-	    """Install the packaged fix for recurring T2 CDC-NCM notifications."""
-	    console = self.query_one("#console", RichLog)
-	    console.write("Installing the recurring network notifications fix...")
-	    if not await self.add_slsrepo_to_chroot():
-	        console.write("[ERROR] Sl's Arch Repository is required for the network notifications fix.")
-	        return
-	    if not await self.run_in_chroot("pacman -S --noconfirm --needed t2-network-rules", timeout=600):
-	        console.write("[ERROR] Failed to install the recurring network notifications fix.")
-	        return
-	    console.write("Recurring network notifications fix successfully installed!")
-	    self.maybe_redirect_completion_from_extras()
+    async def recurring_network_notifications_fix(self):
+        """Install the packaged fix for recurring T2 CDC-NCM notifications."""
+        console = self.query_one("#console", RichLog)
+        console.write("Installing the recurring network notifications fix...")
+        if not await self.add_slsrepo_to_chroot():
+            console.write("[ERROR] Sl's Arch Repository is required for the network notifications fix.")
+            return
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed t2-network-rules", timeout=600):
+            console.write("[ERROR] Failed to install the recurring network notifications fix.")
+            return
+        console.write("Recurring network notifications fix successfully installed!")
+        self.maybe_redirect_completion_from_extras()
 
     async def enable_hybrid_graphics(self):
         """Enable iGPU by default via apple-gmux force_igd."""
@@ -2397,18 +2397,18 @@ Environment=LIBSEAT_BACKEND=logind
         console.write("Hybrid Graphics (iGPU) enabled in /etc/modprobe.d/apple-gmux.conf!")
         self.maybe_redirect_completion_from_extras()
 
-	async def install_audio_dsp(self):
-	    """Install the optional T2 audio DSP package."""
-	    console = self.query_one("#console", RichLog)
-	    console.write("Installing T2 Audio DSP...")
-	    if not await self.add_slsrepo_to_chroot():
-	        console.write("[ERROR] Sl's Arch Repository is required for T2 Audio DSP.")
-	        return
-	    if not await self.run_in_chroot("pacman -S --noconfirm --needed t2bce-audio-dsp", timeout=900):
-	        console.write("[ERROR] T2 Audio DSP installation failed.")
-	        return
-	    console.write("T2 Audio DSP installed successfully!")
-	    self.maybe_redirect_completion_from_extras()
+    async def install_audio_dsp(self):
+        """Install the optional T2 audio DSP package."""
+        console = self.query_one("#console", RichLog)
+        console.write("Installing T2 Audio DSP...")
+        if not await self.add_slsrepo_to_chroot():
+            console.write("[ERROR] Sl's Arch Repository is required for T2 Audio DSP.")
+            return
+        if not await self.run_in_chroot("pacman -S --noconfirm --needed t2bce-audio-dsp", timeout=900):
+            console.write("[ERROR] T2 Audio DSP installation failed.")
+            return
+        console.write("T2 Audio DSP installed successfully!")
+        self.maybe_redirect_completion_from_extras()
 
     async def disable_suspend_sleep(self):
         """Set Suspend and Sleep options to no to disable them completely in sleep.conf."""
