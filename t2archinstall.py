@@ -2025,7 +2025,7 @@ class T2ArchInstaller(App):
             "polkit", "polkit-gnome", "swaync", "swayosd", "noto-fonts", "noto-fonts-emoji", "ttf-dejavu", "ttf-ibm-plex", "inter-font", "otf-font-awesome",
             "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "fnott", "fuzzel", "fyi", "foot", "ghostty", "wayvnc", "jq", "brightnessctl", "duf",
             "pavucontrol", "pamixer", "pulsemixer", "awww", "swappy", "satty", "kimageformats", "wf-recorder", "mpv", "mpd", "playerctl", "cava",
-            "cliphist", "udiskie", "cups-pk-helper", "network-manager-applet", "khal", "python-pywal", "pastel", "matugen", "imagemagick",
+            "cliphist", "udiskie", "cups-pk-helper", "network-manager-applet", "khal", "pastel", "matugen", "imagemagick",
             "wlr-randr", "wtype", "wdisplays", "wlsunset", "dialog", "ddcutil", "i2c-tools", "tuned-ppd", "dgop"
         ]
 
