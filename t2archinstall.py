@@ -198,7 +198,7 @@ class T2ArchInstaller(App):
                             yield Button("Auto Install (in the app)", id="pacstrap_auto_btn")
                             yield Button("Manual Install (will exit the app)", id="pacstrap_manual_btn")
                             yield Static("Manual command:")
-                            yield Static("pacstrap -K /mnt base linux-t2 linux-t2-headers apple-t2-audio-config apple-bcm-firmware linux-firmware networkmanager t2fanrd grub efibootmgr nano sudo git base-devel lvm2 btrfs-progs", id="pacstrap_cmd")
+                            yield Static("pacstrap -K /mnt base linux-t2 linux-t2-headers apple-t2-audio-config apple-bcm-firmware-fetcher linux-firmware networkmanager t2fanrd grub efibootmgr nano sudo git base-devel lvm2 btrfs-progs", id="pacstrap_cmd")
 
                     with TabPane("System", id="system_tab"):
                         with VerticalScroll(id="system_scroll", can_focus=False):
@@ -258,12 +258,12 @@ class T2ArchInstaller(App):
                             yield Button("Install tiny-dfr (for better TouchBar support)", id="tiny_dfr_btn")
                             yield Button("Enable Hybrid Graphics (iGPU)", id="enable_hybrid_graphics_btn")
                             yield Button("T2 TouchBar recurring network notifications fix", id="recurring_network_notifications_fix_btn")
-                            yield Button("Install T2 Audio DSP", id="audio_dsp_btn")
+                            yield Button("Install T2 Audio DSP (Optional)", id="audio_dsp_btn")
                             yield Static("T2 Suspend solutions:")
                             yield Button("Disable Suspend and Sleep", id="suspend_sleep_btn")
                             yield Button("Ignore Suspend when closing the lid", id="ignore_lid_btn")
                             yield Button("Enable T2 Suspend Workaround Service", id="suspend_fix_btn")
-                            yield Button("Enable Extended T2 Suspend Workaround Service", id="extended_suspend_fix_btn")                            
+                            yield Button("Enable Extended T2 Suspend Workaround Service", id="extended_suspend_fix_btn")
 
                     with TabPane("Completion", id="completion_tab"):
                         with VerticalScroll(id="completion_scroll", can_focus=False):
@@ -394,7 +394,7 @@ class T2ArchInstaller(App):
                 return cmd
 
             # Fallback to stdbuf to reduce buffering for regular commands.
-            return f"stdbuf -oL -eL {cmd}"
+            return f"stdbuf -oL -eL bash -c {shlex.quote(cmd)}"
 
         def needs_pacman_cleanup(cmd: str) -> bool:
             cmd_lower = cmd.lower()
@@ -496,7 +496,7 @@ class T2ArchInstaller(App):
             console = self.query_one("#console", RichLog)
             console.write("[ERROR] Chroot is not ready - run pacstrap first.")
             return False
-        wrapped_inner = f"stdbuf -oL -eL {inner_cmd}"
+        wrapped_inner = f"stdbuf -oL -eL bash -c {shlex.quote(inner_cmd)}"
         chroot_cmd = f"arch-chroot /mnt bash -lc {shlex.quote(wrapped_inner)}"
         return await self.run_command(chroot_cmd, timeout=timeout)
 
@@ -1512,7 +1512,7 @@ class T2ArchInstaller(App):
         if self.post_install_mode:
             console.write("[WARN] pacstrap is install-only and will be skipped in post-install mode.")
             return
-        packages = "base linux-t2 linux-t2-headers apple-t2-audio-config apple-bcm-firmware linux-firmware networkmanager bluez bluez-utils bluez-tools t2fanrd grub efibootmgr nano sudo git base-devel lvm2 btrfs-progs"
+        packages = "base linux-t2 linux-t2-headers apple-t2-audio-config apple-bcm-firmware-fetcher linux-firmware networkmanager bluez bluez-utils bluez-tools t2fanrd grub efibootmgr nano sudo git base-devel lvm2 btrfs-progs"
         cmd = f"pacstrap -K /mnt {packages}"
         console.write("Installing base system... This might take a while (10+ minutes)...")
         if await self.run_command(cmd, timeout=1800):
@@ -1797,20 +1797,18 @@ class T2ArchInstaller(App):
             "remember_last_entry: yes",
             "",
             "/Arch Linux T2",
-            "    protocol: linux",
-            "    kernel_path: boot():/vmlinuz-linux-t2",
-            "    module_path: boot():/initramfs-linux-t2.img",
-            f"    cmdline: {root_part} {kernel_params}",
+            "    protocol: efi",
+            "    path: boot():/vmlinuz-linux-t2",
+            fr"    cmdline: initrd=\initramfs-linux-t2.img {root_part} {kernel_params}",
         ]
         fallback_initramfs_path = os.path.join(self._get_target_root(), "boot", "efi", "initramfs-linux-t2-fallback.img")
         if os.path.exists(fallback_initramfs_path):
             limine_conf_lines.extend([
                 "",
                 "/Arch Linux T2 (Fallback)",
-                "    protocol: linux",
-                "    kernel_path: boot():/vmlinuz-linux-t2",
-                "    module_path: boot():/initramfs-linux-t2-fallback.img",
-                f"    cmdline: {root_part} {kernel_params}",
+                "    protocol: efi",
+                "    path: boot():/vmlinuz-linux-t2",
+                fr"    cmdline: initrd=\initramfs-linux-t2-fallback.img {root_part} {kernel_params}",
             ])
         # Add UKI entry after Fallback, if it exists
         limine_conf_lines.extend([
@@ -1818,7 +1816,7 @@ class T2ArchInstaller(App):
             "/Arch Linux T2 (UKI)",
             "    protocol: efi_chainload",
             "    path: boot():/EFI/Linux/arch-linux-t2.efi",
-        ])    
+        ])
         try:
             limine_conf_dir = os.path.dirname(limine_conf_path)
             os.makedirs(limine_conf_dir, exist_ok=True)
@@ -2401,9 +2399,6 @@ Environment=LIBSEAT_BACKEND=logind
         """Install the optional T2 audio DSP package."""
         console = self.query_one("#console", RichLog)
         console.write("Installing T2 Audio DSP...")
-        if not await self.add_slsrepo_to_chroot():
-            console.write("[ERROR] Sl's Arch Repository is required for T2 Audio DSP.")
-            return
         if not await self.run_in_chroot("pacman -S --noconfirm --needed t2bce-audio-dsp", timeout=900):
             console.write("[ERROR] T2 Audio DSP installation failed.")
             return

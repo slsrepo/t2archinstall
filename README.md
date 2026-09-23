@@ -8,11 +8,11 @@ The installer provides a guided step-by-step process using a multi-tab interface
 
 While distributions like Ubuntu or Fedora provide graphical installers in their ISOs that walk you through formatting your drive and setting up your system, Arch's ISO boots directly into a command-line environment.
 
-Normally, this requires manually following terminal commands from the Arch Wiki, or using the bundled `⁠archinstall`⁠ utility, which unfortunately is incompatible with the unique hardware requirements of Macs with the T2 security chip.
+Normally, this requires manually following terminal commands from the Arch Wiki, or using the bundled `archinstall` utility, which unfortunately is incompatible with the unique hardware requirements of Macs with the T2 security chip.
 
-This script bridges that gap by providing a Terminal User Interface (TUI) designed specifically for T2 hardware. By booting into the ISO and running ⁠`t2archinstall` (or using curl to fetch it from GitHub as detailed below)⁠, you are presented with an interactive interface that guides you through the entire installation process.
+This script bridges that gap by providing a Terminal User Interface (TUI) designed specifically for T2 hardware. By booting into the ISO and running `t2archinstall` (or using curl to fetch it from GitHub as detailed below), you are presented with an interactive interface that guides you through the entire installation process.
 
-`⁠t2archinstall`⁠ is also built with transparency in mind. It features a dedicated console on the right side of the screen that displays the real-time output of every command the script executes. Located at the bottom of this console is a built-in command input bar. If you need to make manual modifications, check a log file, or troubleshoot a step at any point during the installation, you can type and execute your own terminal commands directly inside the interface without ever having to exit the installer.
+`t2archinstall` is also built with transparency in mind. It features a dedicated console on the right side of the screen that displays the real-time output of every command the script executes. Located at the bottom of this console is a built-in command input bar. If you need to make manual modifications, check a log file, or troubleshoot a step at any point during the installation, you can type and execute your own terminal commands directly inside the interface without ever having to exit the installer.
 
 Please note: It is assumed that since you want to install Arch, you already know what it is and how it functions. This script's primary purpose is just to help you simplify and automate the installation process for the specific nuances of T2 hardware.
 
@@ -76,7 +76,7 @@ If you are looking for other variations of this script including a non-T2 versio
 
 ### Available Variations
 
-You can quickly download and launch any of the alternative installers using the following commands.
+You can quickly download and launch any of [the alternative installers](https://github.com/slsrepo/t2archinstall-variants) using the following commands.
 
 The `-postinstall` variants are designed for systems that are already up and running. They provide a convenient interface to easily configure users, install additional desktop environments, or install hardware-specific tweaks included in the full installation script without needing to run the full installation process.
 
@@ -84,7 +84,7 @@ The `-postinstall` variants are designed for systems that are already up and run
    ```
    curl -fsSL https://a.sls.re/t2arch.sh | sh
    ```
- * **t2artixinstall** (For installing Artix Linux on T2 Macs):
+ * **t2artixinstall** (For installing [Artix Linux](https://artixlinux.org) on T2 Macs):
    ```
    curl -fsSL https://a.sls.re/t2artix.sh | sh
    ```
@@ -95,7 +95,7 @@ The `-postinstall` variants are designed for systems that are already up and run
  * **sl-artixinstall** (Standard Artix installer without the T2 modifications):
    ```
    curl -fsSL https://a.sls.re/sl-artix.sh | sh
-   ```   
+   ```
  * **sl-arch-postinstall** (Post installation version for existing Arch systems):
    ```
    curl -fsSL https://a.sls.re/sl-arch-postinstall.sh | sh
