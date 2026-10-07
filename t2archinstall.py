@@ -243,8 +243,8 @@ class T2ArchInstaller(App):
                             yield Button("KDE", id="kde_auto_btn")
                             # yield Button("KDE (Manual)", id="kde_manual_btn")
                             yield Button("COSMIC", id="cosmic_auto_btn")
-                            yield Button("Niri", id="niri_auto_btn")
-                            yield Button("Niri + DankMaterialShell", id="niridms_auto_btn")
+                            yield Button("niri", id="niri_auto_btn")
+                            yield Button("niri + DankMaterialShell", id="niridms_auto_btn")
                             yield Static("Hyprland is not supported!")
 
                     with TabPane("Extras", id="extras_tab"):
@@ -2352,9 +2352,9 @@ Environment=LIBSEAT_BACKEND=logind
             "pacman -S --noconfirm --needed iwd",
             "mkdir -p /etc/NetworkManager/conf.d",
             """cat > /etc/NetworkManager/conf.d/20-wifi-backend.conf <<'EOF'
-    [device]
-    wifi.backend=iwd
-    EOF""",
+[device]
+wifi.backend=iwd
+EOF""",
             "systemctl enable iwd.service",
         ]
         if self.post_install_mode:
