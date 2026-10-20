@@ -245,6 +245,7 @@ class T2ArchInstaller(App):
                             yield Button("COSMIC", id="cosmic_auto_btn")
                             yield Button("niri", id="niri_auto_btn")
                             yield Button("niri + DankMaterialShell", id="niridms_auto_btn")
+                            yield Button("Slash (niri + DMS + Sl)", id="slash_auto_btn")
                             yield Static("Hyprland is not supported!")
 
                     with TabPane("Extras", id="extras_tab"):
@@ -259,6 +260,7 @@ class T2ArchInstaller(App):
                             yield Button("Enable Hybrid Graphics (iGPU)", id="enable_hybrid_graphics_btn")
                             yield Button("T2 TouchBar recurring network notifications fix", id="recurring_network_notifications_fix_btn")
                             yield Button("Install T2 Audio DSP (Optional)", id="audio_dsp_btn")
+                            yield Button("Install T2 Touch ID support (Optional)", id="t2_touchid_btn")
                             yield Static("T2 Suspend solutions:")
                             yield Button("Disable Suspend and Sleep", id="suspend_sleep_btn")
                             yield Button("Ignore Suspend when closing the lid", id="ignore_lid_btn")
@@ -793,8 +795,8 @@ class T2ArchInstaller(App):
         elif button_id == "no_de_btn":
             console.write("No desktop environment selected")
             tabs.active = "extras_tab"
-        elif button_id in ["gnome_auto_btn", "gnome_manual_btn", "kde_auto_btn", "kde_manual_btn", "cosmic_auto_btn", "niri_auto_btn", "niridms_auto_btn"]:
-            de_type = button_id.split("_", 1)[0] # "gnome"|"kde"|"cosmic"|""|"niri"|"niridms"
+        elif button_id in ["gnome_auto_btn", "gnome_manual_btn", "kde_auto_btn", "kde_manual_btn", "cosmic_auto_btn", "niri_auto_btn", "niridms_auto_btn", "slash_auto_btn"]:
+            de_type = button_id.split("_", 1)[0] # "gnome"|"kde"|"cosmic"|"niri"|"niridms"|"slash"
             is_manual = "manual" in button_id
             await self.install_desktop_environment(de_type, is_manual)
         elif button_id == "extras_btn": await self.install_extras()
@@ -812,6 +814,8 @@ class T2ArchInstaller(App):
             await self.recurring_network_notifications_fix()
         elif button_id == "audio_dsp_btn":
             await self.install_audio_dsp()
+        elif button_id == "t2_touchid_btn":
+            await self.install_t2_touchid()
         elif button_id == "suspend_sleep_btn": await self.disable_suspend_sleep()
         elif button_id == "ignore_lid_btn": await self.ignore_lid_switch()
         elif button_id == "suspend_fix_btn": await self.install_suspend_fix()
@@ -2018,15 +2022,15 @@ class T2ArchInstaller(App):
             return True
 
     def wm_shared_packages(self) -> list[str]:
-        """Packages for window managers (Niri)"""
+        """Packages for window managers (niri)"""
         return [
-            "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk", "xdg-utils",
+            "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk", "xdg-utils", "pacman-contrib",
             "pipewire", "pipewire-alsa", "pipewire-pulse", "pipewire-zeroconf", "wireplumber", "gvfs", "ffmpeg", "accountsservice",
-            "polkit", "polkit-gnome", "swaync", "swayosd", "noto-fonts", "noto-fonts-emoji", "ttf-dejavu", "ttf-ibm-plex", "inter-font", "otf-font-awesome",
+            "polkit", "polkit-gnome", "swaync", "swayosd", "noto-fonts", "noto-fonts-emoji", "ttf-dejavu", "ttf-ibm-plex", "inter-font", "otf-font-awesome", "zsh",
             "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "fnott", "fuzzel", "fyi", "foot", "ghostty", "wayvnc", "jq", "brightnessctl", "duf",
             "pavucontrol", "pamixer", "pulsemixer", "awww", "swappy", "satty", "kimageformats", "wf-recorder", "mpv", "mpd", "playerctl", "cava",
             "cliphist", "udiskie", "cups-pk-helper", "network-manager-applet", "khal", "pastel", "matugen", "imagemagick",
-            "wlr-randr", "wtype", "wdisplays", "wlsunset", "dialog", "ddcutil", "i2c-tools", "tuned-ppd", "dgop"
+            "wlr-randr", "wtype", "wdisplays", "wlsunset", "dialog", "ddcutil", "i2c-tools", "tuned-ppd", "dgop", "oniri"
         ]
 
     async def wm_write_user_file(self, username: str, rel_path: str, content: str, overwrite: bool = True) -> bool:
@@ -2045,7 +2049,7 @@ class T2ArchInstaller(App):
 
     async def wm_install_greetd_dms_greeter(self) -> bool:
         """
-        Setup greetd with DMS greeter for Niri.
+        Setup greetd with DMS greeter for niri.
         """
         console = self.query_one("#console", RichLog)
         console.write("Setting up greetd with DMS greeter...")
@@ -2054,7 +2058,7 @@ class T2ArchInstaller(App):
             console.write("[ERROR] Username not set; create user first.")
             return False
 
-        # Configure greetd to use DMS greeter with Niri
+        # Configure greetd to use DMS greeter with niri
         config_toml = """[terminal]
 vt = 2
 
@@ -2132,9 +2136,22 @@ Environment=LIBSEAT_BACKEND=logind
         console.write("sl-greeter and sl-lock installed and configured successfully!")
         return True
 
+    async def wm_enable_dms_service(self) -> bool:
+        """Start DMS as a user service in the niri session."""
+        home = f"/home/{self.username}"
+        wants = shlex.quote(f"{home}/.config/systemd/user/niri.service.wants")
+        username = shlex.quote(self.username)
+        command = (
+            f"mkdir -p {wants} && "
+            f"ln -sf /usr/lib/systemd/user/dms.service {wants}/dms.service && "
+            f"chown -R {username}:{username} "
+            f"{shlex.quote(f'{home}/.config/systemd')}"
+        )
+        return await self.run_in_chroot(command)
+
     async def install_niri(self) -> bool:
         console = self.query_one("#console", RichLog)
-        # console.write("Installing Niri... This might take a while.")
+        # console.write("Installing niri... This might take a while.")
 
         if not self.username:
             console.write("[ERROR] Username not set; create user first.")
@@ -2142,7 +2159,7 @@ Environment=LIBSEAT_BACKEND=logind
 
         packages = " ".join(self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring"])
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages}", timeout=1800):
-            console.write("[ERROR] Failed to install Niri packages.")
+            console.write("[ERROR] Failed to install niri packages.")
             return False
 
         # Install sl-greeter and sl-lock (sl-desktop-utils)
@@ -2150,7 +2167,7 @@ Environment=LIBSEAT_BACKEND=logind
             console.write("[ERROR] Failed to install sl-desktop-utils (sl-greeter and sl-lock).")
             return False
 
-        console.write("Creating Niri configuration...")
+        console.write("Creating niri configuration...")
         niri_config_dir = f"/home/{self.username}/.config/niri"
         niri_config_url = "https://raw.githubusercontent.com/niri-wm/niri/main/resources/default-config.kdl"
 
@@ -2168,19 +2185,20 @@ Environment=LIBSEAT_BACKEND=logind
             f"sed -i 's/alacritty/ghostty/g' {niri_config_dir}/config.kdl && "
             f"sed -i 's/Screen: swaylock/Screen: sl-lock/g' {niri_config_dir}/config.kdl && "
             f"sed -i 's/spawn \\\"swaylock\\\"/spawn \\\"sl-lock\\\"/g' {niri_config_dir}/config.kdl && "
+            f"sed -i '/^[[:space:]]*XF86TouchpadToggle[[:space:]].*{{[[:space:]]*toggle-touchpad;[[:space:]]*}}/s@^@// @' {niri_config_dir}/config.kdl && "
             f"(grep -q 'lid-close' {niri_config_dir}/config.kdl || echo -e '\\nswitch-events {{\\n    lid-close {{ spawn \"sl-lock\"; }}\\n}}' >> {niri_config_dir}/config.kdl) && "
             f"sed -i 's|// spawn-at-startup \"swayidle\".*|// Show Lock screen after 5 minutes\\n    spawn-at-startup \"sl-idle-lock\" \"300\"\\n\\n    // Turn off monitors after 6 minutes\\n    spawn-at-startup \"sh\" \"-c\" \"while true; do wayidle -t 360 niri msg action power-off-monitors; done\"|g' {niri_config_dir}/config.kdl && "
             f"(grep -q 'spawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"' {niri_config_dir}/config.kdl || echo 'spawn-at-startup \"/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1\"' >> {niri_config_dir}/config.kdl) && "
             f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
         )
         if not await self.run_in_chroot(create_config_cmd):
-            console.write("[WARN] Failed to create Niri config, continuing...")
+            console.write("[WARN] Failed to create niri config, continuing...")
 
-        console.write("Niri installed successfully!")
+        console.write("niri installed successfully!")
         return True
 
     async def install_niri_with_dms(self) -> bool:
-        """Install Niri with DankMaterialShell (DMS) from slsrepo."""
+        """Install niri with DankMaterialShell (DMS) from slsrepo."""
         console = self.query_one("#console", RichLog)
 
         if not self.username:
@@ -2192,17 +2210,17 @@ Environment=LIBSEAT_BACKEND=logind
             console.write("[ERROR] Failed to add Sl's Arch Repository")
             return False
 
-        # Install base packages (Niri + shared WM packages)
+        # Install base packages (niri + shared WM packages)
         base_packages = self.wm_shared_packages() + ["niri", "xwayland-satellite", "xdg-desktop-portal-gnome", "gnome-keyring", "fprintd", "pam-u2f", "qt6-multimedia", "adw-gtk-theme", "qt6ct-kde"]
         packages_str = " ".join(base_packages)
 
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {packages_str}", timeout=1800):
-            console.write("[ERROR] Failed to install Niri base packages")
+            console.write("[ERROR] Failed to install niri's base packages")
             return False
 
         # Install DMS, QuickShell, and dependencies from Sl's Arch Repository
         console.write("Installing DMS, QuickShell, and dependencies from Sl's Arch Repository...")
-        dms_packages = "quickshell dms-shell-niri dms-shell matugen greetd dsearch-git greetd-dms-greeter-bin dankcalendar-bin"
+        dms_packages = "quickshell dms-shell matugen greetd dsearch-git greetd-dms-greeter-bin dankcalendar-bin"
 
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {dms_packages}", timeout=600):
             console.write("[ERROR] Failed to install DMS packages")
@@ -2213,7 +2231,7 @@ Environment=LIBSEAT_BACKEND=logind
             console.write("[ERROR] DMS greeter setup failed")
             return False
 
-        console.write("Creating Niri configuration...")
+        console.write("Creating niri configuration...")
         niri_config_dir = f"/home/{self.username}/.config/niri"
         niri_config_url = "https://raw.githubusercontent.com/niri-wm/niri/main/resources/default-config.kdl"
         dms_include_files = ["colors", "layout", "alttab", "binds"]
@@ -2233,26 +2251,109 @@ Environment=LIBSEAT_BACKEND=logind
             f"sed -i '/^[[:space:]]*spawn-at-startup[[:space:]]\\+\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
             f"sed -i '/^[[:space:]]*spawn-at-startup-sh[[:space:]]\\+\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
             f"sed -i '/^[[:space:]]*command[[:space:]]*\\(=\\|\\)[[:space:]]*\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
+            f"sed -i '/^[[:space:]]*XF86TouchpadToggle[[:space:]].*{{[[:space:]]*toggle-touchpad;[[:space:]]*}}/s@^@// @' {niri_config_dir}/config.kdl && "
             f"{dms_include_ensure_cmd} && "
             f"(grep -q 'match namespace=\"^quickshell$\"' {niri_config_dir}/config.kdl || printf '\\nlayer-rule {{\\n    match namespace=\"^quickshell$\"\\n    place-within-backdrop true\\n}}\\n' >> {niri_config_dir}/config.kdl) && "
             f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
         )
         if not await self.run_in_chroot(create_config_cmd):
-            console.write("[WARN] Failed to create Niri config, continuing...")
+            console.write("[WARN] Failed to create niri config, continuing...")
 
         # Enable DMS systemd user service
         console.write("Enabling DMS systemd user service...")
-        enable_dms_cmd = (
-            f"mkdir -p /home/{self.username}/.config/systemd/user/niri.service.wants && "
-            f"ln -sf /usr/lib/systemd/user/dms.service /home/{self.username}/.config/systemd/user/niri.service.wants/dms.service && "
-            f"chown -R {self.username}:{self.username} /home/{self.username}/.config"
-        )
-        if not await self.run_in_chroot(enable_dms_cmd):
+        if not await self.wm_enable_dms_service():
             console.write("[ERROR] Failed to enable DMS service")
             return False
         console.write("DMS service enabled successfully!")
         console.write("DMS will now start automatically when you log in.")
-        console.write("Niri with DMS installed successfully!")
+        console.write("niri with DMS installed successfully!")
+        return True
+
+    async def install_slash(self) -> bool:
+        """Install Sl's Desktop packages alongside DankMaterialShell and niri from slsrepo."""
+        console = self.query_one("#console", RichLog)
+        if not await self.install_niri():
+            return False
+
+        packages = [
+            "dms-shell", "sl-desktop-assets", "sl-daily-background-bing", "sl-blue-dms-theme",
+            "sl-xkb-mac-layouts", "sl-display-mirror", "sl-toolbox", "sl-menubar", "sl-dock", "sl-taskbar", "sl-duobar",
+            "sl-desktop-surface", "sl-cursor-shake", "sl-layout", "sl-firefox-config", "meerkrite", "meerkrite-tui",
+            "fprintd", "pam-u2f", "qt6-multimedia", "adw-gtk-theme", "qt6ct-kde", "matugen", "dsearch-git", "dankcalendar-bin"
+        ]
+        console.write("Installing DankMaterialShell and Slash desktop components...")
+        if not await self.run_in_chroot(
+            "pacman -S --noconfirm --needed " + " ".join(packages), timeout=1800
+        ):
+            console.write("[ERROR] Failed to install Slash desktop components.")
+            return False
+
+        home = f"/home/{self.username}"
+        config = shlex.quote(f"{home}/.config/niri/config.kdl")
+        console.write("Creating niri configuration...")
+        niri_config_dir = f"/home/{self.username}/.config/niri"
+        if not await self.wm_enable_dms_service():
+            console.write("[ERROR] Failed to configure DMS startup.")
+            return False
+
+        dms_include_files = ["colors", "layout", "alttab", "binds"]
+        dms_touch_targets = " ".join(f"{niri_config_dir}/dms/{name}.kdl" for name in dms_include_files)
+        dms_include_ensure_cmd = " && ".join(
+            f"(grep -q 'include \"dms/{name}.kdl\"' {niri_config_dir}/config.kdl || echo 'include \"dms/{name}.kdl\"' >> {niri_config_dir}/config.kdl)"
+            for name in dms_include_files
+        )
+
+        # Create config, replace alacritty with ghostty and comment out waybar
+        create_config_cmd = (
+            f"mkdir -p {niri_config_dir} && "
+            f"mkdir -p {niri_config_dir}/dms && "
+            f"touch {dms_touch_targets} && "
+            f"sed -i '/^[[:space:]]*spawn-at-startup[[:space:]]\\+\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
+            f"sed -i '/^[[:space:]]*spawn-at-startup-sh[[:space:]]\\+\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
+            f"sed -i '/^[[:space:]]*command[[:space:]]*\\(=\\|\\)[[:space:]]*\"waybar\"/s/^/\\/\\//' {niri_config_dir}/config.kdl && "
+            f"{dms_include_ensure_cmd} && "
+            f"(grep -q 'match namespace=\"^quickshell$\"' {niri_config_dir}/config.kdl || printf '\\nlayer-rule {{\\n    match namespace=\"^quickshell$\"\\n    place-within-backdrop true\\n}}\\n' >> {niri_config_dir}/config.kdl) && "
+            f"chown -R {self.username}:{self.username} /home/{self.username}/.config && "
+            f"chown -R {self.username}: /usr/local/share/backgrounds"
+        )
+        if not await self.run_in_chroot(create_config_cmd):
+            console.write("[WARN] Failed to create niri config, continuing...")
+
+        # Configure Niri startup commands
+        startup_lines = [
+            'spawn-sh-at-startup "oniri --tiling-layout"',
+            'spawn-at-startup "sl-daily-background"',
+            'spawn-at-startup "sl-layout" "--welcome"',
+        ]
+
+        for startup_line in startup_lines:
+            quoted_line = shlex.quote(startup_line)
+            add_startup = (
+                f"grep -Fqx -- {quoted_line} {config} || "
+                f"printf '%s\\n' {quoted_line} >> {config}"
+            )
+            if not await self.run_in_chroot(add_startup):
+                console.write(f"[ERROR] Failed to configure Niri startup: {startup_line}")
+                return False
+
+        # Enable the daily background timer for the new user.
+        # The user's systemd session is not running during installation.
+        timer_unit = "/usr/lib/systemd/user/sl-daily-background.timer"
+        timer_wants = shlex.quote(f"{home}/.config/systemd/user/timers.target.wants")
+
+        enable_timer = (
+            f"test -f {shlex.quote(timer_unit)} && "
+            f"mkdir -p {timer_wants} && "
+            f"ln -sfn {shlex.quote(timer_unit)} {timer_wants}/sl-daily-background.timer && "
+            f"chown -R {shlex.quote(self.username)}:{shlex.quote(self.username)} "
+            f"{shlex.quote(f'{home}/.config/systemd')}"
+        )
+
+        if not await self.run_in_chroot(enable_timer):
+            console.write("[ERROR] Failed to enable the daily-background timer for the user.")
+            return False
+
+        console.write("Slash installed successfully! Choose your layout at first login.")
         return True
 
     async def install_desktop_environment(self, de_type: str, is_manual: bool):
@@ -2260,9 +2361,11 @@ Environment=LIBSEAT_BACKEND=logind
         console = self.query_one("#console", RichLog)
 
         if de_type == "niri":
-          console.write("Installing Niri... This might take a while.")
+          console.write("Installing niri... This might take a while.")
         elif de_type == "niridms":
-          console.write("Installing Niri with DankMaterialShell... This might take a while.")
+          console.write("Installing niri with DankMaterialShell... This might take a while.")
+        elif de_type == "slash":
+          console.write("Installing Slash with niri and DankMaterialShell... This might take a while.")
         else:
           console.write(f"Installing {de_type.upper()}... This might take a while.")
 
@@ -2294,6 +2397,16 @@ Environment=LIBSEAT_BACKEND=logind
             return
         if de_type == "niridms":
             ok = await self.install_niri_with_dms()
+            if ok:
+                de_commands = [
+                                "systemctl enable greetd.service"
+                              ]
+                self.query_one("#left_panel").focus()
+                self.query_one(TabbedContent).active = "extras_tab"
+            return
+
+        if de_type == "slash":
+            ok = await self.install_slash()
             if ok:
                 de_commands = [
                                 "systemctl enable greetd.service"
@@ -2395,10 +2508,26 @@ EOF""",
         console.write("Hybrid Graphics (iGPU) enabled in /etc/modprobe.d/apple-gmux.conf!")
         self.maybe_redirect_completion_from_extras()
 
+    async def install_t2_touchid(self):
+        """Install support for T2 Touch ID."""
+        console = self.query_one("#console", RichLog)
+        console.write("Installing T2 Touch ID support...")
+        if not await self.run_in_chroot(
+            "pacman -S --noconfirm --needed t2-touchid", timeout=900
+        ):
+            console.write("[ERROR] T2 Touch ID installation failed.")
+            return
+        console.write("T2 Touch ID installed successfully!")
+        console.write("After booting, enable the service and enroll your fingerprint.")
+        self.maybe_redirect_completion_from_extras()
+
     async def install_audio_dsp(self):
         """Install the optional T2 audio DSP package."""
         console = self.query_one("#console", RichLog)
         console.write("Installing T2 Audio DSP...")
+        if not await self.add_slsrepo_to_chroot():
+            console.write("[ERROR] Sl's Arch Repository is required for T2 Audio DSP.")
+            return
         if not await self.run_in_chroot("pacman -S --noconfirm --needed t2bce-audio-dsp", timeout=900):
             console.write("[ERROR] T2 Audio DSP installation failed.")
             return
