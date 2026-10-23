@@ -244,8 +244,8 @@ class T2ArchInstaller(App):
                             # yield Button("KDE (Manual)", id="kde_manual_btn")
                             yield Button("COSMIC", id="cosmic_auto_btn")
                             yield Button("niri", id="niri_auto_btn")
-                            yield Button("niri + DankMaterialShell", id="niridms_auto_btn")
-                            yield Button("Slash (niri + DMS + Sl)", id="slash_auto_btn")
+                            yield Button("niri + Dux Shell", id="niridms_auto_btn")
+                            yield Button("Slash (niri + Dux + Sl)", id="slash_auto_btn")
                             yield Static("Hyprland is not supported!")
 
                     with TabPane("Extras", id="extras_tab"):
@@ -2030,7 +2030,7 @@ class T2ArchInstaller(App):
             "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "fnott", "fuzzel", "fyi", "foot", "ghostty", "wayvnc", "jq", "brightnessctl", "duf",
             "pavucontrol", "pamixer", "pulsemixer", "awww", "swappy", "satty", "kimageformats", "wf-recorder", "mpv", "mpd", "playerctl", "cava",
             "cliphist", "udiskie", "cups-pk-helper", "network-manager-applet", "khal", "pastel", "matugen", "imagemagick",
-            "wlr-randr", "wtype", "wdisplays", "wlsunset", "dialog", "ddcutil", "i2c-tools", "tuned-ppd", "dgop", "oniri"
+            "wlr-randr", "wtype", "wdisplays", "wlsunset", "dialog", "ddcutil", "i2c-tools", "tuned-ppd", "dux-gop", "oniri"
         ]
 
     async def wm_write_user_file(self, username: str, rel_path: str, content: str, overwrite: bool = True) -> bool:
@@ -2049,16 +2049,16 @@ class T2ArchInstaller(App):
 
     async def wm_install_greetd_dms_greeter(self) -> bool:
         """
-        Setup greetd with DMS greeter for niri.
+        Set up greetd with Dux Greeter for niri.
         """
         console = self.query_one("#console", RichLog)
-        console.write("Setting up greetd with DMS greeter...")
+        console.write("Setting up greetd with Dux Greeter...")
 
         if not self.username:
             console.write("[ERROR] Username not set; create user first.")
             return False
 
-        # Configure greetd to use DMS greeter with niri
+        # Configure greetd to use Dux Greeter with niri
         config_toml = """[terminal]
 vt = 2
 
@@ -2091,7 +2091,7 @@ Environment=LIBSEAT_BACKEND=logind
             console.write("[ERROR] Failed to enable greetd.service")
             return False
 
-        console.write("greetd configured with DMS greeter successfully!")
+        console.write("greetd configured with Dux Greeter successfully!")
         return True
 
     async def wm_install_sl_desktop_utils(self) -> bool:
@@ -2137,7 +2137,7 @@ Environment=LIBSEAT_BACKEND=logind
         return True
 
     async def wm_enable_dms_service(self) -> bool:
-        """Start DMS as a user service in the niri session."""
+        """Start Dux Shell through its dms user service in the niri session."""
         home = f"/home/{self.username}"
         wants = shlex.quote(f"{home}/.config/systemd/user/niri.service.wants")
         username = shlex.quote(self.username)
@@ -2198,7 +2198,7 @@ Environment=LIBSEAT_BACKEND=logind
         return True
 
     async def install_niri_with_dms(self) -> bool:
-        """Install niri with DankMaterialShell (DMS) from slsrepo."""
+        """Install niri with Dux Shell from slsrepo."""
         console = self.query_one("#console", RichLog)
 
         if not self.username:
@@ -2218,17 +2218,17 @@ Environment=LIBSEAT_BACKEND=logind
             console.write("[ERROR] Failed to install niri's base packages")
             return False
 
-        # Install DMS, QuickShell, and dependencies from Sl's Arch Repository
-        console.write("Installing DMS, QuickShell, and dependencies from Sl's Arch Repository...")
-        dms_packages = "quickshell dms-shell matugen greetd dsearch-git greetd-dms-greeter-bin dankcalendar-bin"
+        # Install Dux Shell, Quickshell, and dependencies from Sl's Arch Repository
+        console.write("Installing Dux Shell, Quickshell, and dependencies from Sl's Arch Repository...")
+        dux_packages = "quickshell dux-shell matugen greetd dsearch-git greetd-dms-greeter-bin dankcalendar-bin dux-files-bin"
 
-        if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {dms_packages}", timeout=600):
-            console.write("[ERROR] Failed to install DMS packages")
+        if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {dux_packages}", timeout=600):
+            console.write("[ERROR] Failed to install Dux Shell packages")
             return False
 
-        # Use DMS greeter for DankMaterialShell
+        # Use Dux Greeter for Dux Shell
         if not await self.wm_install_greetd_dms_greeter():
-            console.write("[ERROR] DMS greeter setup failed")
+            console.write("[ERROR] Dux Greeter setup failed")
             return False
 
         console.write("Creating niri configuration...")
@@ -2259,29 +2259,29 @@ Environment=LIBSEAT_BACKEND=logind
         if not await self.run_in_chroot(create_config_cmd):
             console.write("[WARN] Failed to create niri config, continuing...")
 
-        # Enable DMS systemd user service
-        console.write("Enabling DMS systemd user service...")
+        # Enable Dux Shell's systemd user service
+        console.write("Enabling Dux Shell's systemd user service...")
         if not await self.wm_enable_dms_service():
-            console.write("[ERROR] Failed to enable DMS service")
+            console.write("[ERROR] Failed to enable Dux Shell's systemd service")
             return False
-        console.write("DMS service enabled successfully!")
-        console.write("DMS will now start automatically when you log in.")
-        console.write("niri with DMS installed successfully!")
+        console.write("Dux Shell's systemd service enabled successfully!")
+        console.write("Dux Shell will now start automatically when you log in.")
+        console.write("niri with Dux Shell installed successfully!")
         return True
 
     async def install_slash(self) -> bool:
-        """Install Sl's Desktop packages alongside DankMaterialShell and niri from slsrepo."""
+        """Install Sl's Desktop packages alongside Dux Shell and niri from slsrepo."""
         console = self.query_one("#console", RichLog)
         if not await self.install_niri():
             return False
 
         packages = [
-            "dms-shell", "sl-desktop-assets", "sl-daily-background-bing", "sl-blue-dms-theme",
+            "dux-shell", "sl-desktop-assets", "sl-daily-background-bing", "sl-blue-dux-theme",
             "sl-xkb-mac-layouts", "sl-display-mirror", "sl-toolbox", "sl-menubar", "sl-dock", "sl-taskbar", "sl-duobar",
             "sl-desktop-surface", "sl-cursor-shake", "sl-layout", "sl-firefox-config", "meerkrite", "meerkrite-tui",
             "fprintd", "pam-u2f", "qt6-multimedia", "adw-gtk-theme", "qt6ct-kde", "matugen", "dsearch-git", "dankcalendar-bin"
         ]
-        console.write("Installing DankMaterialShell and Slash desktop components...")
+        console.write("Installing Slash and Dux desktop components...")
         if not await self.run_in_chroot(
             "pacman -S --noconfirm --needed " + " ".join(packages), timeout=1800
         ):
@@ -2293,7 +2293,7 @@ Environment=LIBSEAT_BACKEND=logind
         console.write("Creating niri configuration...")
         niri_config_dir = f"/home/{self.username}/.config/niri"
         if not await self.wm_enable_dms_service():
-            console.write("[ERROR] Failed to configure DMS startup.")
+            console.write("[ERROR] Failed to configure Dux Shell startup.")
             return False
 
         dms_include_files = ["colors", "layout", "alttab", "binds"]
@@ -2319,7 +2319,7 @@ Environment=LIBSEAT_BACKEND=logind
         if not await self.run_in_chroot(create_config_cmd):
             console.write("[WARN] Failed to create niri config, continuing...")
 
-        # Configure Niri startup commands
+        # Configure niri startup commands
         startup_lines = [
             'spawn-sh-at-startup "oniri --tiling-layout"',
             'spawn-at-startup "sl-daily-background"',
@@ -2333,7 +2333,7 @@ Environment=LIBSEAT_BACKEND=logind
                 f"printf '%s\\n' {quoted_line} >> {config}"
             )
             if not await self.run_in_chroot(add_startup):
-                console.write(f"[ERROR] Failed to configure Niri startup: {startup_line}")
+                console.write(f"[ERROR] Failed to configure niri startup: {startup_line}")
                 return False
 
         # Enable the daily background timer for the new user.
@@ -2363,9 +2363,9 @@ Environment=LIBSEAT_BACKEND=logind
         if de_type == "niri":
           console.write("Installing niri... This might take a while.")
         elif de_type == "niridms":
-          console.write("Installing niri with DankMaterialShell... This might take a while.")
+          console.write("Installing niri with Dux Shell... This might take a while.")
         elif de_type == "slash":
-          console.write("Installing Slash with niri and DankMaterialShell... This might take a while.")
+          console.write("Installing Slash with niri and Dux Shell... This might take a while.")
         else:
           console.write(f"Installing {de_type.upper()}... This might take a while.")
 
