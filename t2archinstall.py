@@ -2027,7 +2027,7 @@ class T2ArchInstaller(App):
             "xdg-user-dirs", "xdg-desktop-portal", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk", "xdg-utils", "pacman-contrib",
             "pipewire", "pipewire-alsa", "pipewire-pulse", "pipewire-zeroconf", "wireplumber", "gvfs", "ffmpeg", "accountsservice",
             "polkit", "polkit-gnome", "swaync", "swayosd", "noto-fonts", "noto-fonts-emoji", "ttf-dejavu", "ttf-ibm-plex", "inter-font", "otf-font-awesome", "zsh",
-            "waybar", "wl-clipboard", "grim", "slurp", "kanshi", "fnott", "fuzzel", "fyi", "foot", "ghostty", "wayvnc", "jq", "brightnessctl", "duf",
+            "waybar", "wl-clipboard", "kanshi", "fnott", "fuzzel", "fyi", "sakura", "ghostty", "wayvnc", "jq", "brightnessctl", "duf",
             "pavucontrol", "pamixer", "pulsemixer", "awww", "swappy", "satty", "kimageformats", "wf-recorder", "mpv", "mpd", "playerctl", "cava",
             "cliphist", "udiskie", "cups-pk-helper", "network-manager-applet", "khal", "pastel", "matugen", "imagemagick",
             "wlr-randr", "wtype", "wdisplays", "wlsunset", "dialog", "ddcutil", "i2c-tools", "tuned-ppd", "dux-gop", "oniri"
@@ -2220,7 +2220,7 @@ Environment=LIBSEAT_BACKEND=logind
 
         # Install Dux Shell, Quickshell, and dependencies from Sl's Arch Repository
         console.write("Installing Dux Shell, Quickshell, and dependencies from Sl's Arch Repository...")
-        dux_packages = "quickshell dux-shell matugen greetd dsearch-git greetd-dms-greeter-bin dankcalendar-bin dux-files-bin"
+        dux_packages = "quickshell dux-shell matugen greetd dux-search-git dux-greeter-bin dux-calendar-bin dux-files-bin"
 
         if not await self.run_in_chroot(f"pacman -S --noconfirm --needed {dux_packages}", timeout=600):
             console.write("[ERROR] Failed to install Dux Shell packages")
@@ -2234,11 +2234,29 @@ Environment=LIBSEAT_BACKEND=logind
         console.write("Creating niri configuration...")
         niri_config_dir = f"/home/{self.username}/.config/niri"
         niri_config_url = "https://raw.githubusercontent.com/niri-wm/niri/main/resources/default-config.kdl"
-        dms_include_files = ["colors", "layout", "alttab", "binds"]
-        dms_touch_targets = " ".join(f"{niri_config_dir}/dms/{name}.kdl" for name in dms_include_files)
-        dms_include_ensure_cmd = " && ".join(
-            f"(grep -q 'include \"dms/{name}.kdl\"' {niri_config_dir}/config.kdl || echo 'include \"dms/{name}.kdl\"' >> {niri_config_dir}/config.kdl)"
-            for name in dms_include_files
+        dms_include_files = [
+            ("colors", False),
+            ("layout", False),
+            ("alttab", False),
+            ("binds-next", True),
+            ("binds", False),
+        ]
+        dms_touch_targets = " ".join(
+            f"{niri_config_dir}/dms/{name}.kdl"
+            for name, optional in dms_include_files
+            if not optional
+        )
+        dms_include_ensure_cmd = (
+            f"sed -i '/^include optional=true \"dms\\/binds-next.kdl\"$/d' {niri_config_dir}/config.kdl && "
+            f"sed -i '/^include \"dms\\/binds.kdl\"$/d' {niri_config_dir}/config.kdl && "
+            " && ".join(
+                (
+                    f"echo 'include optional=true \"dms/{name}.kdl\"' >> {niri_config_dir}/config.kdl"
+                    if optional
+                    else f"(grep -q 'include \"dms/{name}.kdl\"' {niri_config_dir}/config.kdl || echo 'include \"dms/{name}.kdl\"' >> {niri_config_dir}/config.kdl)"
+                )
+                for name, optional in dms_include_files
+            )
         )
 
         # Create config, replace alacritty with ghostty and comment out waybar
@@ -2270,7 +2288,7 @@ Environment=LIBSEAT_BACKEND=logind
         return True
 
     async def install_slash(self) -> bool:
-        """Install Sl's Desktop packages alongside Dux Shell and niri from slsrepo."""
+        """Install Sl's Desktop packages alongside niri and Dux Shell from slsrepo."""
         console = self.query_one("#console", RichLog)
         if not await self.install_niri():
             return False
@@ -2279,7 +2297,7 @@ Environment=LIBSEAT_BACKEND=logind
             "dux-shell", "sl-desktop-assets", "sl-daily-background-bing", "sl-blue-dux-theme",
             "sl-xkb-mac-layouts", "sl-display-mirror", "sl-toolbox", "sl-menubar", "sl-dock", "sl-taskbar", "sl-duobar",
             "sl-desktop-surface", "sl-cursor-shake", "sl-layout", "sl-firefox-config", "meerkrite", "meerkrite-tui",
-            "fprintd", "pam-u2f", "qt6-multimedia", "adw-gtk-theme", "qt6ct-kde", "matugen", "dsearch-git", "dankcalendar-bin"
+            "fprintd", "pam-u2f", "qt6-multimedia", "adw-gtk-theme", "qt6ct-kde", "matugen", "dux-search-git", "dux-calendar-bin"
         ]
         console.write("Installing Slash and Dux desktop components...")
         if not await self.run_in_chroot(
@@ -2296,11 +2314,29 @@ Environment=LIBSEAT_BACKEND=logind
             console.write("[ERROR] Failed to configure Dux Shell startup.")
             return False
 
-        dms_include_files = ["colors", "layout", "alttab", "binds"]
-        dms_touch_targets = " ".join(f"{niri_config_dir}/dms/{name}.kdl" for name in dms_include_files)
-        dms_include_ensure_cmd = " && ".join(
-            f"(grep -q 'include \"dms/{name}.kdl\"' {niri_config_dir}/config.kdl || echo 'include \"dms/{name}.kdl\"' >> {niri_config_dir}/config.kdl)"
-            for name in dms_include_files
+        dms_include_files = [
+            ("colors", False),
+            ("layout", False),
+            ("alttab", False),
+            ("binds-next", True),
+            ("binds", False),
+        ]
+        dms_touch_targets = " ".join(
+            f"{niri_config_dir}/dms/{name}.kdl"
+            for name, optional in dms_include_files
+            if not optional
+        )
+        dms_include_ensure_cmd = (
+            f"sed -i '/^include optional=true \"dms\\/binds-next.kdl\"$/d' {niri_config_dir}/config.kdl && "
+            f"sed -i '/^include \"dms\\/binds.kdl\"$/d' {niri_config_dir}/config.kdl && "
+            " && ".join(
+                (
+                    f"echo 'include optional=true \"dms/{name}.kdl\"' >> {niri_config_dir}/config.kdl"
+                    if optional
+                    else f"(grep -q 'include \"dms/{name}.kdl\"' {niri_config_dir}/config.kdl || echo 'include \"dms/{name}.kdl\"' >> {niri_config_dir}/config.kdl)"
+                )
+                for name, optional in dms_include_files
+            )
         )
 
         # Create config, replace alacritty with ghostty and comment out waybar
